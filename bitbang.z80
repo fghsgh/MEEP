@@ -1,0 +1,363 @@
+; noise: $16 bytes
+; bass: ? bytes (doesn't matter)
+; others: $14 bytes
+; uses RAM $c000-$c07c, $caca-$cad2, $cb00-$cc00
+; also claims index and shadow registers, so do not use these after initialization
+
+; bitbang_init is a macro that generates these routines:
+; it also generates an interrupt vector table at $cb00 (inside statvars) pointing to $caca
+; (labels below are real labels)
+; (actual data is compressed inside program binary)
+
+; interrupt: (at $caca aka inside statvars)
+;   ex af,af'
+;   exx
+;   out ($00),a
+;
+;   ld a,$03
+;   out ($31),a
+;
+;   jp (hl)
+
+; pulsewave0: (at $c000)
+; pulsewave2.freq := $ + 1
+;   ld hl,$0001
+;   add hl,bc
+;   ld c,l
+;   ld b,h
+;   ld a,ixh
+;
+; pulsewave0.width := $ + 1
+;   cp $00
+;   sbc a,a
+; pulsewave0.mask := $ + 1
+;   and $00
+; pulsewave0.next := $ + 1
+;   ld hl,pulsewave1
+;   ex af,af'
+;   exx
+;   ei
+;   ret
+
+; pulsewave1: (at $c014)
+; pulsewave3.freq := $ + 1
+;   ld hl,$0000
+;   add hl,de
+;   ex de,hl
+;   nop
+;   ld a,iyh
+;
+; pulsewave1.width := $ + 1
+;   cp $00
+;   sbc a,a
+; pulsewave1.mask := $ + 1
+;   and $00
+; pulsewave1.next := $ + 1
+;   ld hl,pulsewave2
+;   ex af,af'
+;   exx
+;   ei
+;   ret
+
+; pulsewave2: (at $c028)
+; pulsewave0.freq := $ + 1
+;   ld hl,$0000
+;   ex de,hl
+;   add ix,de
+;   ex de,hl
+;   ld a,b
+;
+; pulsewave2.width := $ + 1
+;   cp $00
+;   sbc a,a
+; pulsewave2.mask := $ + 1
+;   and $00
+; pulsewave2.next := $ + 1
+;   ld hl,pulsewave3
+;   ex af,af'
+;   exx
+;   ei
+;   ret
+
+; pulsewave3: (at $c03c)
+; pulsewave1.freq := $ + 1
+;   ld hl,$0000
+;   ex de,hl
+;   add iy,de
+;   ex de,hl
+;   ld a,b
+;
+; pulsewave3.width := $ + 1
+;   cp $00
+;   sbc a,a
+; pulsewave3.mask := $ + 1
+;   and $00
+; pulsewave3.next := $ + 1
+;   ld hl,noisewave OR basswave (SMC)
+;   ex af,af'
+;   exx
+;   ei
+;   ret
+
+; noisewave: (at $c050)
+; noisewave.seed := $ + 1
+;   ld hl,$0001
+;   add hl,hl
+;   sbc a,a
+;   and $2d
+;   xor l
+;   ld l,a
+;   ld (seed),hl
+;   add a,c
+;
+; noisewave.mask := $ + 1
+;   and $00
+; noisewave.next := $ + 1
+;   ld hl,pulsewave0
+;   ex af,af'
+;   exx
+;   ei
+;   ret
+
+; basswave: (at $c066)
+; basswave.state := $ + 1
+;   ld hl,$0000
+;   dec l
+;   ld a,h
+;   jr nz,basswave.end
+;   cpl
+;   ld h,a
+; basswave.length := $ + 1
+;   ld l,$00
+; basswave.end:
+;   ld (basswave.state),hl
+; basswave.size := $ - $$
+; basswave.mask := $ + 1
+;   and $00
+; basswave.next := $ + 1
+;   ld hl,pulsewave0
+;   ex af,af'
+;   exx
+;   ei
+;   ret
+
+macro bitbang_init
+  ld a,4                      ; copy the regular channels first
+  ld de,$c000
+  ld b,e
+  ld hl,channels
+
+.channel_loop:                ; copy parts for pulse wave channels
+  ld c,ch_size                ; channel-specific part
+  ldir
+  push hl                     ; push hl so the next time we'll have the next channel's channel-specific part
+
+  ld hl,pulsewave             ; part common to pulse waves
+  ld c,3
+  ldir
+  ld hl,wave_end              ; part common to everything
+  ld c,wave_end.size
+  ldir
+
+  ld hl,pulsewave.next - pulsewave.size
+  add hl,de                   ; set next jump address correctly
+  ld (hl),e
+
+  pop hl
+  dec a
+  jr nz,.channel_loop
+
+  ld hl,noisewave             ; copy noise wave specific part
+  ld c,noisewave.size
+  ldir
+  ld hl,wave_end              ; and the part common to everything
+  ld c,wave_end.size
+  ldir
+
+  ld hl,basswave              ; same thing for the basswave (pulse wave without controllable pulse width, with wavelength control rather than frequency control)
+  ld c,basswave.size
+  ldir
+  ld hl,wave_end
+  ld c,wave_end.size
+  ldir
+
+  ld hl,interrupt             ; set up the interrupt
+  ld de,$caca                 ; in statvars
+  ld c,interrupt.size
+  ldir
+
+  ld hl,$cb00
+  ld b,1
+  ld e,b
+  ld d,h
+  ld (hl),$ca
+  ldir
+  ld a,$cb
+  ld i,a
+
+  ld hl,$c000
+  ld c,l
+  ld b,l
+  ld e,l
+  ld d,l
+  ld ix,$0000
+  di
+  ld iy,$0000
+
+  ld a,$80
+  out ($30),a
+  ld a,$03
+  out ($31),a
+  ld a,176
+  out ($32),a
+
+  exx
+  im 2
+  ei
+end macro
+
+noisewave:
+virtual at $c000 + 4 * pulsewave.size
+noisewave.seed := $ + 1
+  ld hl,$0001
+  add hl,hl
+  sbc a,a
+  and $2d
+  xor l
+  ld l,a
+  ld (noisewave.seed),hl
+  add a,c
+noisewave.size := $ - $$
+load noisewave.data: noisewave.size from $$
+noisewave.mask := $ + 1
+  and $00
+  ld hl,$c000
+  ex af,af'
+  exx
+  ei
+  ret
+noisewave.end := $
+end virtual
+  db noisewave.data
+
+basswave:
+virtual at noisewave.end
+basswave.start:
+basswave.state := $ + 1
+  ld hl,$0000
+  dec l
+  ld a,h
+  jr nz,basswave.end
+  cpl
+  ld h,a
+basswave.length := $ + 1
+  ld l,$00
+basswave.end:
+  ld (basswave.state),hl
+basswave.size := $ - $$
+basswave.mask := $ + 1
+  and $00
+  ld hl,$c000
+  ex af,af'
+  exx
+  ei
+  ret
+load basswave.data: basswave.size from $$
+end virtual
+db basswave.data
+
+pulsewave:
+virtual at $0000
+  cp $00
+  sbc a,a
+load pulsewave.data: $ - $$ from $$
+end virtual
+  db pulsewave.data
+
+virtual at $0000
+pulsewave.freq := $ + 1
+  ld hl,$0000
+  add hl,de
+  ex de,hl
+  nop
+  ld a,iyl
+pulsewave.width := $ + 1
+  cp $00
+  sbc a,a
+pulsewave.mask := $ + 1
+  and $00
+pulsewave.next := $ + 1
+  ld hl,$0000
+  ex af,af'
+  exx
+  ei
+  ret
+pulsewave.size:
+end virtual
+
+wave_end:
+virtual at $0000
+  and $00
+  ld hl,$c000
+  ex af,af'
+  exx
+  ei
+  ret
+wave_end.size := $ - $$
+load wave_end.data: wave_end.size from $$
+end virtual
+  db wave_end.data
+
+macro ?!
+  local i
+  repeat 4,i:0
+    pulsewave#i := $c000 + 20 * i
+    iterate field,width,mask,next
+      pulsewave#i.field := pulsewave#i + pulsewave.field
+    end iterate
+    pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq
+  end repeat
+  purge ?
+end macro
+
+ch_size := 8
+channels:
+; ch0
+  ld hl,$0001
+  add hl,bc
+  ld c,l
+  ld b,h
+  ld a,ixh
+; ch1
+  ld hl,$0000
+  add hl,de
+  ex de,hl
+  nop
+  ld a,iyh
+; ch2
+  ld hl,$0000
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,b
+; ch3
+  ld hl,$0000
+  ex de,hl
+  add iy,de
+  ex de,hl
+  ld a,d
+
+interrupt:
+virtual at $caca
+  ex af,af'
+  exx
+  out ($00),a
+
+  ld a,$03
+  out ($31),a
+
+  jp (hl)
+interrupt.size := $ - $$
+load interrupt.data: interrupt.size from $$
+end virtual
+  db interrupt.data

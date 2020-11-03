@@ -1,0 +1,703 @@
+; this source file handles reading note data and SMCing certain bytes in bitbang.z80 to change what notes are playing
+; the general-purpose driver, ch_driver, is relocatable
+;  it gets copied to RAM on start four times, the drumbass driver is appended once, this drumbass driver will also wait for the next frame and jump back to the first general-purpose driver
+;   relocate_a are addresses within the driver itself (org $0000 is assumed)
+;   relocate_w are addresses inside the pulsewave bitbang routines (thus depending on the channel)
+;   relocate_d is the LSB of the data of a single channel, it can be $00 (ch 0), $40 (ch 1), $80 (ch 2), $c0 (ch 3)
+; the drumbass driver, db_driver, is not relocatable, its origin is assumed to be $c6ec + 4 * driver.size
+
+
+macro driver_init
+driver_init_c:
+  ld c,4
+  ld de,$c6ec
+
+.loop:
+  ld a,c
+  push de
+
+  ld hl,ch_driver
+  ld bc,ch_driver.size
+  ldir
+
+  ex de,hl
+  ex (sp),hl
+  ex de,hl
+  ld b,relocate_a.len
+  ld c,a
+  ld ix,relocate_a.table
+.relocate_a_loop:
+  ld l,(ix)
+  inc ix
+  ld h,(ix)
+  inc ix
+  add hl,de
+  push hl
+  ld a,(hl)
+  inc hl
+  ld h,(hl)
+  ld l,a
+  add hl,de
+  ex (sp),hl
+  dec sp
+  pop af
+  ld (hl),a
+  inc hl
+  dec sp
+  pop af
+  ld (hl),a
+  djnz .relocate_a_loop
+
+  ld b,relocate_d.len
+  ld a,4
+  sub c
+  rrca
+  rrca
+  ld ix,relocate_d.table
+.relocate_d_loop:
+  ld l,(ix)
+  inc ix
+  ld h,(ix)
+  inc ix
+  add hl,de
+  ld (hl),a
+  djnz .relocate_d_loop
+
+  rlca
+  rlca
+  add a,a
+  add a,a
+  ld e,a
+  add a,a
+  add a,a
+  add a,e
+  ld e,a
+
+  ld b,relocate_w.len
+  ld ix,relocate_w.table
+.relocate_w_loop:
+  ld l,(ix)
+  inc ix
+  ld h,(ix)
+  inc ix
+  ld a,(hl)
+  add a,e
+  cp $50
+  jr c,.not_looparound
+  sub $50
+.not_looparound:
+  ld (hl),a
+  djnz .relocate_w_loop
+
+  dec c
+  pop de
+  jr nz,.loop
+
+
+  ld hl,drumbass
+  ld de,$c6ec + 4 * ch_driver.size
+  ld bc,drumbass.size
+  ldir
+
+
+  ld hl,$da00
+  xor a
+.zero_counters_loop:
+  ld (hl),a
+  inc l
+  jr nz,.zero_counters_loop
+
+
+  ld a,$40                    ; 50 Hz -> timer 3
+  out ($36),a
+  ld a,$01
+  out ($37),a
+  ld a,218
+  out ($38),a
+end macro
+
+ch_driver:
+virtual at $0000
+ch_driver_org:
+
+; ramp pulse width
+.pw_state := $ + 1
+  ld hl,$0000
+.pw_change := $ + 1
+  ld de,$0000
+  or a
+.pw_direction := $ + 1
+  adc hl,de
+  jr nc,.pw_no_carry
+
+relocate_a =: $ + 1
+  ld a,(.pw_direction)
+  cp $5a
+  jr z,.pw_set_sbc
+
+.pw_set_adc:
+  xor a
+  sub l
+  ld l,a
+
+.pw_max2 := $ + 1             ; double of (.pw_max)
+  ld a,$fe
+  sub h
+  ld h,a
+
+  ld a,$5a
+relocate_a =: $ + 1
+  ld (.pw_direction),a
+  jr .after_pw
+
+.pw_no_carry:
+  ld a,h
+.pw_max := $ + 1
+  cp $ff
+  jr c,.pw_set_adc
+
+.pw_min := $ + 1
+  cp $00
+  jr nc,.after_pw
+
+.pw_set_sbc:
+  xor a
+  sub l
+  ld l,a
+
+.pw_min2 := $ + 1             ; double of (.pw_min)
+  ld a,$00
+  sub h
+  ld h,a
+
+  ld a,$52
+relocate_a =: $ + 1
+  ld (.pw_direction),a
+
+.after_pw:
+relocate_a =: $ + 1
+  ld (.pw_state),hl
+  ld a,h
+relocate_a =: $ + 1
+  ld (pulsewave0.width),a
+
+
+; arpeggio / vibrato
+  jr $ + 2                    ; will be SMC'd to jump to .vib to do vibrato
+.vib_reljump:
+
+; arpeggio
+.arp_index := $ + 1
+relocate_d =: $ + 1
+  ld hl,$d900
+  ld b,(hl)
+  ex de,hl
+  call decode_note
+relocate_w =: $ + 1
+  ld (pulsewave0.freq),hl
+  ld a,e
+  and $3f
+  inc a
+.arp_count := $ + 1
+  cp $01
+  jr c,.arp_not_last
+  xor a
+.arp_not_last:
+  ld l,a
+  ld a,e
+  and $c0
+  or l
+relocate_a =: $ + 1
+  ld (.arp_index),a
+  jr .after_arp_vib
+
+
+; vibrato
+.vib:
+.vib_state := $ + 1
+  ld hl,$0000                 ; SMC vibrato state
+.vib_delay := $ + 1
+  ld a,$00
+  dec a
+  jr z,.start_vib
+relocate_a =: $ + 1
+  ld (.vib_delay),a
+  jr .vib_end
+
+.start_vib:
+.vib_change := $ + 1
+  ld de,$0000                 ; SMC vib change
+  or a
+.vib_direction := $ + 1
+  adc hl,de
+
+  jr nc,.vib_no_overflow      ; assume this will never overflow while adding (because of frequency ranges blah blah blah), so this happened while subtracting
+  ld a,l                      ; invert HL
+  cpl
+  ld l,a
+  ld a,h
+  cpl
+  ld h,a
+  inc hl
+  ld a,$5a                    ; set back to ADC
+relocate_a =: $ + 1
+  ld (.vib_direction),a
+relocate_a =: $ + 1
+  ld (.vib_state),hl
+  jr .vib_end
+
+.vib_no_overflow:
+.vib_max := $ + 1
+  ld de,$0001
+  or a
+  sbc hl,de
+  jr c,.vib_end_read
+
+  ex de,hl
+  sbc hl,de
+relocate_a =: $ + 1
+  ld (.vib_state),hl
+  jr .vib_end
+
+.vib_end_read:
+relocate_a =: $ + 1
+  ld hl,(.vib_state)
+.vib_end:
+.vib_offset := $ + 1
+  ld de,$0000
+  add hl,de
+relocate_w =: $ + 1
+  ld (pulsewave0.freq),hl
+
+.after_arp_vib:
+
+
+; note length
+.play_decrement:
+.note_length := $ + 1
+  ld a,$01
+  dec a
+  jr z,.silent_decrement
+relocate_a =: $ + 1
+  ld (.note_length),a
+.mask := $ + 1
+  ld a,$00
+relocate_w =: $ + 1
+  ld (pulsewave0.mask),a
+relocate_a =: $ + 1
+  jp .next
+
+.silent_decrement:
+relocate_w =: $ + 1
+  ld (pulsewave0.mask),a
+.rest_length := $ + 1
+  ld a,$01
+  dec a
+  jr z,.read_note
+relocate_a =: $ + 1
+  ld (.rest_length),a
+relocate_a =: $ + 1
+  jp .next
+
+
+; read next note
+.read_note:
+.channel_pointer := $ + 1
+  ld hl,$0000
+.next_command:
+  ld a,(hl)
+  inc hl
+  ld b,a
+  and $0f
+  jr z,.parse_command
+
+; reset arpeggio
+  xor a
+relocate_a =: $ + 1
+  ld (.arp_index),a
+
+; do pulse width
+  ld e,a
+.pw_start := $ + 1
+  ld a,$00
+  or a
+  jr z,.skip_pwset
+  ld d,a
+relocate_a =: $ + 2
+  ld (.pw_state),de
+.skip_pwset:
+
+; read all notes of arpeggio (vibrato will read the first of these later)
+.arp_count2 := $ + 1
+  ld a,$01
+  or a
+  jr nz,.arp_not_zero
+  ld a,$40
+.arp_not_zero:
+  ld c,a
+  ld b,$00
+relocate_d =: $ + 1
+  ld de,$d900
+  dec hl
+  ldir
+
+; read note length
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.channel_pointer),hl
+
+; process note length
+.note_length_argument := $ + 1
+  ld e,$00
+.note_length_jr := $ + 1
+  jr $ + 2
+.after_jr_length:
+  sub e
+  jr nc,.add_length_no_overflow
+
+  add a,e
+  ld e,a
+  xor a
+
+.add_length_no_overflow:
+  inc a
+relocate_a =: $ + 1
+  ld (.rest_length),a
+  ld a,e
+relocate_a =: $ + 1
+  ld (.note_length),a
+  jr .after_length
+
+.jr_sub:
+  sub e
+  jr nc,.sub_length_no_overflow
+
+  add a,e
+  ld e,a
+  ld a,1
+
+.sub_length_no_overflow:
+relocate_a =: $ + 1
+  ld (.note_length),a
+  ld a,e
+  inc a
+relocate_a =: $ + 1
+  ld (.rest_length),a
+  jr .after_length
+
+.jr_frac:
+  ld h,a
+  ld c,a
+  call e_mul_h
+  ld a,c
+  sub h
+  inc a
+relocate_a =: $ + 1
+  ld (.rest_length),a
+  ld a,h
+  or a
+  jr z,.read_note
+relocate_a =: $ + 1
+  ld (.note_length),a
+
+.after_length:
+
+.vib_delay_reset := $ + 1
+  ld a,$01
+relocate_a =: $ + 1
+  ld (.vib_delay),a
+
+  
+relocate_a =: $ + 1
+  ld (.vib_offset),hl
+  add hl,hl
+  push hl
+.vib_difference := $ + 1
+  ld e,$00
+  call e_mul_h
+  ld e,l
+  ld d,h
+relocate_a =: $ + 1
+  ld (.vib_state),hl
+  add hl,hl
+relocate_a =: $ + 1
+  ld (.vib_max),hl
+  pop hl
+.vib_speed := $ + 1
+  ld e,$00
+  call e_mul_h
+relocate_a =: $ + 1
+  ld (.vib_change),hl
+
+  
+  ; TODO handle vibrato offset values
+  ; written after the above comment: maybe it's done, check while debugging
+
+relocate_a =: $ + 1
+  jp .next
+
+.parse_command:
+  ld a,b
+  rrca
+  rrca
+  rrca
+  rrca
+  and $0f
+  jr nz,.not_pwset
+
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.pw_start),a
+
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.pw_min),a
+  add a,a
+relocate_a =: $ + 1
+  ld (.pw_min2),a
+
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.pw_max),a
+  add a,a
+relocate_a =: $ + 1
+  ld (.pw_max2),a
+
+  ld e,(hl)
+  inc hl
+  ld d,(hl)
+  inc hl
+relocate_a =: $ + 2
+  ld (.pw_change),de
+relocate_a =: $ + 1
+  jp .next_command
+
+.not_pwset:
+  ld b,a
+  djnz .not_maskset
+
+  ld a,(hl)
+  inc hl
+full_mask := $ + 1
+  and $03
+relocate_a =: $ + 1
+  ld (.mask),a
+relocate_a =: $ + 1
+  jp .next_command
+
+.not_maskset:
+  djnz .not_notelength_additive
+
+  xor a
+  jr .set_notelength
+
+.not_notelength_additive:
+  djnz .not_notelength_subtractive
+
+  ld a,.jr_sub - .after_jr_length
+  jr .set_notelength
+
+.not_notelength_subtractive:
+  djnz .not_notelength_fractional
+
+  ld a,.jr_frac - .after_jr_length
+.set_notelength:
+relocate_a =: $ + 1
+  ld (.note_length_jr),a
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.note_length_argument),a
+relocate_a =: $ + 1
+  jp .next_command
+
+.not_notelength_fractional:
+  djnz .not_glide
+
+  ld a,.vib - .vib_reljump
+relocate_a =: $ + 1
+  ld (.vib_reljump - 1),a
+  ld a,$01
+relocate_a =: $ + 1
+  ld (.arp_count),a
+relocate_a =: $ + 1
+  ld (.arp_count2),a
+relocate_a =: $ + 1
+  ld (.vib_delay),a
+
+  ld d,(hl)
+  inc hl
+  ld e,(hl)
+  inc hl
+  ld c,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.channel_pointer),hl
+  ld b,d
+  call decode_note
+relocate_d =: $ + 1
+  ld ($d900),hl
+  ld b,e
+  ex de,hl
+  call decode_note
+  or a
+  sbc hl,de
+  jr nc,.glide_up
+
+  add hl,de
+relocate_a =: $ + 1
+  ld (.vib_offset),hl
+  ex de,hl
+  or a
+  sbc hl,de
+relocate_a =: $ + 1
+  ld (.vib_max),hl
+  call hl_div_c
+relocate_a =: $ + 1
+  ld (.vib_change),hl
+  ld a,$52
+relocate_a =: $ + 1
+  ld (.vib_direction),a
+  jp .next
+
+.glide_up:
+relocate_a =: $ + 1
+  ld (.vib_max),hl
+relocate_a =: $ + 1
+  ld (.vib_offset),de
+  call hl_div_c
+relocate_a =: $ + 1
+  ld (.vib_change),hl
+  ld a,$5a
+relocate_a =: $ + 1
+  ld (.vib_direction),a
+  jr .next
+
+.not_glide:
+  djnz .not_vib_properties
+
+  ld a,.vib - .vib_reljump
+relocate_a =: $ + 1
+  ld (.vib_reljump - 1),a
+  ld a,$01
+relocate_a =: $ + 1
+  ld (.arp_count),a
+relocate_a =: $ + 1
+  ld (.arp_count2),a
+
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.vib_delay_reset),a
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.vib_difference),a
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.vib_speed),a
+  jp .next_command
+
+.not_vib_properties:
+  djnz .not_arp_count
+
+  ld a,(hl)
+  inc hl
+  and $1f
+  jr nz,.arp_not_0
+  ld a,$20
+.arp_not_0:
+relocate_a =: $ + 1
+  ld (.arp_count),a
+relocate_a =: $ + 1
+  ld (.arp_count2),a
+  xor a
+relocate_a =: $ + 1
+  ld (.vib_reljump - 1),a
+  jp .next_command
+
+.not_arp_count:
+  djnz .not_rest
+
+  ld a,(hl)
+  inc hl
+relocate_a =: $ + 1
+  ld (.rest_length),a
+  jr .next
+
+.not_rest:
+  djnz .not_uncond_jump
+
+  ld e,(hl)
+  inc hl
+  ld d,(hl)
+  ld hl,($d8a2)
+  add hl,de
+relocate_a =: $ + 1
+  ld (.channel_pointer),hl
+  jp .next_command
+
+.not_uncond_jump:
+  djnz .not_djnz
+
+  ld e,(hl)
+  inc hl
+  ex de,hl
+  ld h,$da
+  dec (hl)
+  ex de,hl
+  ld e,(hl)
+  inc hl
+  ld d,(hl)
+  inc hl
+  jp nz,.next_command
+  ex de,hl
+relocate_a =: $ + 1
+  ld (.channel_pointer),hl
+  jp .next_command
+
+.not_djnz:
+  djnz .not_setvalue
+
+  ld e,(hl)
+  inc hl
+  ld d,$da
+  ld a,(hl)
+  inc hl
+  ld (de),a
+  jp .next_command
+
+.not_setvalue:
+  dec hl
+
+.next:
+ch_driver.size := $ - $$
+load ch_driver.data: ch_driver.size from $$
+end virtual
+db ch_driver.data
+
+repeat 1,x:ch_driver.size
+  display "driver size per channel: ",`x,10
+end repeat
+
+iterate relocate,relocate_a,relocate_d,relocate_w
+  relocate.table:
+  irpv address,relocate
+    relocate#_len = %%
+    dw address
+  end irpv
+  relocate.len := relocate#_len
+end iterate
+
+drumbass:
+virtual at $c6ec + 4 * ch_driver.size
+  jp $c6ec
+  drumbass.size := $ - $$
+  load drumbass.data: drumbass.size from $$
+end virtual
+db drumbass.data

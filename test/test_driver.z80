@@ -1,0 +1,47 @@
+include "../../z80.inc"
+include "../../ti83plusg.inc"
+format binary as "bin"
+
+  db $bb,$6d
+  org $9d95
+
+  di
+  push iy
+  ld a,4
+  out ($27),a
+  ld a,1
+  out ($05),a
+  out ($20),a
+  xor a
+  out ($03),a
+  jp start
+
+  org $4000 + $
+  include "../math.z80"
+  include "../driver.z80"
+  include "../bitbang.z80"
+
+start:
+  driver_init
+  bitbang_init
+
+  jp $c6ec
+
+done:
+  di
+  jp after8000
+  org $ - $4000
+after8000:
+  xor a
+  out ($00),a
+  out ($05),a
+  out ($20),a
+  out ($27),a
+  out ($30),a
+  out ($31),a
+  ld a,$0b
+  out ($03),a
+  pop iy
+  im 1
+  ret
+

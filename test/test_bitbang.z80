@@ -1,0 +1,93 @@
+include "../../z80.inc"
+include "../../ti83plusg.inc"
+format binary as "bin"
+
+  db $bb,$6d
+  org $9d95
+
+  di
+  push iy
+  ld a,4
+  out ($27),a
+  ld a,1
+  out ($05),a
+  out ($20),a
+  xor a
+  out ($03),a
+  jp start
+
+  org $4000 + $
+  include "../bitbang.z80"
+
+start:
+
+  bitbang_init
+  ld hl,$01cd
+  ld (pulsewave0.freq),hl
+  ld hl,$0245
+  ld (pulsewave1.freq),hl
+  ld hl,$02b3
+  ld (pulsewave2.freq),hl
+  ld hl,$0335
+  ld (pulsewave3.freq),hl
+
+  ld a,$8e
+  ld (basswave.length),a
+
+  ld hl,basswave.start
+  ld ($c000 + 20 * 3 + pulsewave.next),hl
+
+  ld a,$80
+  ld ($c000 + 20 * 0 + pulsewave.width),a
+  ld ($c000 + 20 * 1 + pulsewave.width),a
+  ld ($c000 + 20 * 2 + pulsewave.width),a
+  ld ($c000 + 20 * 3 + pulsewave.width),a
+
+  ld a,$03
+  ld (basswave.mask),a
+
+
+  ld hl,pulsewave0.mask
+  ld bc,5
+
+idleloop:
+  in a,($04)
+  and $08
+  jp nz,idleloop
+
+  dec c
+  jr z,done
+
+  ld (hl),$03
+  ld a,l
+  add a,$14
+  ld l,a
+  
+  djnz $
+
+onreleaseloop:
+  in a,($04)
+  and $08
+  jp z,onreleaseloop
+
+  djnz $
+  jp idleloop
+
+done:
+  di
+  jp after8000
+  org $ - $4000
+after8000:
+  xor a
+  out ($00),a
+  out ($05),a
+  out ($20),a
+  out ($27),a
+  out ($30),a
+  out ($31),a
+  ld a,$0b
+  out ($03),a
+  pop iy
+  im 1
+  ret
+

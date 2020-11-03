@@ -1,0 +1,135 @@
+; this source file contains some math routines
+; mainly: decoding note codes, 8*8 multiplication (for vibrato and fractional note lengths), 16/8 division (for glissando), 32-bit float multiplication (for frequency calibration)
+
+; input:
+;  B: note code ($XY as defined in format.asm)
+; output:
+;  HL: frequency
+; destroys:
+;  AF,B
+decode_note:
+  ld a,b
+  and $f0
+  rrca
+  rrca
+  rrca
+  add a,$72
+  ld l,a
+  ld h,$d8
+  ld a,(hl)
+  inc l
+  ld h,(hl)
+  ld l,a
+
+  ld a,$09
+  sub b
+  and $0f
+  ld b,a
+.loop:
+  srl h
+  rr l
+  djnz .loop
+  ret nc
+  inc hl
+  ret
+
+
+; input:
+;  B: note code
+; output:
+;  A: frequency
+; destroys:
+;  F,B,HL
+decode_note_bass:
+  ld a,b
+  and $f0
+  rrca
+  rrca
+  rrca
+  rrca
+  add a,$92
+  ld l,a
+  ld h,$d8
+  ld l,(hl)
+
+  ld a,b
+  dec a
+  and $0f
+  ld b,a
+  ld a,l
+  ret z
+
+.loop:
+  srl a
+  djnz .loop
+  ret nc
+  inc a
+  ret
+
+
+e_mul_h:
+  ld d,0
+  sla h
+  sbc a,a
+  and e
+  ld l,a
+repeat 6
+  add hl,hl
+  jr nc,$+3
+  add hl,de
+end repeat
+  add hl,hl
+  ret nc
+  add hl,de
+  ret
+
+
+hl_div_b:
+  add hl,hl
+  ld a,h
+  jr c,.2_0
+repeat 7
+  cp b
+  jr c,$+4
+  sub b
+  inc l
+
+  sla l
+  rla
+  jr c,.2_#%
+.1_#%:
+end repeat
+  cp b
+  ret c
+  sub b
+  inc l
+  ret
+
+.2_0:
+repeat 7
+  sub b
+  rl l
+  rla
+  jr nc,.1_#%
+.2_#%:
+end repeat
+  sub b
+  inc l
+  ret
+
+
+hl_div_c:
+  ld b,16
+  xor a
+.loop:
+  add hl,hl
+  rla
+  jr c,.overflow
+  cp c
+  jr c,.nofit
+.overflow:
+  inc l
+  sub c
+.nofit:
+  djnz .loop
+  ret

@@ -1,0 +1,8 @@
+include "../../z80.inc"
+include "../relocatable.inc"
+
+org origin
+
+  dw $
+
+relocatable origin,len,0

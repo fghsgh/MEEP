@@ -6,11 +6,10 @@
 ;   relocate_d is the LSB of the data of a single channel, it can be $00 (ch 0), $40 (ch 1), $80 (ch 2), $c0 (ch 3)
 ; the drumbass driver, db_driver, is not relocatable, its origin is assumed to be $c6ec + 4 * driver.size
 
-
 macro driver_init
 driver_init_c:
   ld c,4
-  ld de,$c6ec
+  ld de,driver_ram
 
 .loop:
   ld a,c
@@ -95,7 +94,7 @@ driver_init_c:
 
 
   ld hl,drumbass
-  ld de,$c6ec + 4 * ch_driver.size
+  ld de,driver_ram + 4 * ch_driver.size
   ld bc,drumbass.size
   ldir
 
@@ -583,7 +582,7 @@ vib_reljump_org:
   ld e,(hl)
   inc hl
   ld d,(hl)
-  ld hl,($d8a2)
+  ld hl,(appvar_start)
   add hl,de
 relocate_a =: $ + 1
   ld (channel_pointer_addr),hl
@@ -595,7 +594,7 @@ relocate_a =: $ + 1
   ld e,(hl)
   inc hl
   ex de,hl
-  ld h,$da
+  ld h,djnz_counters_ram shr 8
   dec (hl)
   ex de,hl
   ld e,(hl)
@@ -612,7 +611,7 @@ relocate_a =: $ + 1
 
   ld e,(hl)
   inc hl
-  ld d,$da
+  ld d,djnz_counters_ram shr 8
   ld a,(hl)
   inc hl
   ld (de),a
@@ -631,8 +630,8 @@ repeat 1,x:ch_driver.size
 end repeat
 
 drumbass:
-virtual at $c6ec + 4 * ch_driver.size
-  jp $c6ec
+virtual at driver_ram + 4 * ch_driver.size
+  jp driver_ram
   drumbass.size := $ - $$
   load drumbass.data: drumbass.size from $$
 end virtual

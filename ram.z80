@@ -1,0 +1,6 @@
+waves_ram := $c000
+appvar_start := $c0bd
+interrupt_ram := $c0c0
+djnz_counters_ram := $c100
+interrupt_table_ram := $c200
+drivers_ram := $c301

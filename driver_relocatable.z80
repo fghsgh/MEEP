@@ -135,8 +135,9 @@ smcable pw_min,pw_min_addr
 smcable pw_min2,pw_min2_addr
 
 smcable vib_reljump,vib_reljump_addr
-smcable arp_count,arp_count_addr
+smcable arp_length,arp_length_addr
 smcable arp_index,arp_index_addr
+smcable arp_address,arp_address_addr
 
 smcable vib_state,vib_state_addr
 smcable vib_delay,vib_delay_addr
@@ -150,7 +151,7 @@ smcable rest_length,rest_length_addr
 
 smcable channel_pointer,channel_pointer_addr
 smcable pw_start,pw_start_addr
-smcable arp_count2,arp_count2_addr
+smcable arp_length2,arp_length2_addr
 smcable vib_delay_reset,vib_delay_reset_addr
 smcable vib_difference,vib_difference_addr
 smcable vib_speed,vib_speed_addr
@@ -219,15 +220,17 @@ pulsewavex.mask := pulsewavex + pulsewave.mask
 vib_reljump_org:
 
 ; arpeggio
-  ld hl,$d900 + relocate_d + arp_index
+  ld de,arp_index
+  ld hl,arp_address
+  add hl,de
+  ld c,e
   ld b,(hl)
   ex de,hl
   call decode_note
   ld (pulsewavex.freq),hl
-  ld a,e
-  and $3f
+  ld a,c
   inc a
-  cp arp_count
+  cp arp_length
   jr c,.arp_not_last
   xor a
 .arp_not_last:
@@ -331,7 +334,7 @@ vib_reljump_org:
 .skip_pwset:
 
 ; read all notes of arpeggio (vibrato will read the first of these later)
-  ld a,arp_count2 + $01
+  ld a,arp_length2 + $01
   or a
   jr nz,.arp_not_zero
   ld a,$40
@@ -491,8 +494,8 @@ vib_reljump_org:
   ld a,.vib - .vib_reljump_org
   ld (vib_reljump_addr),a
   ld a,$01
-  ld (arp_count_addr),a
-  ld (arp_count2_addr),a
+  ld (arp_length_addr),a
+  ld (arp_length2_addr),a
   ld (vib_delay_addr),a
 
   ld d,(hl)
@@ -539,8 +542,8 @@ vib_reljump_org:
   ld a,.vib - .vib_reljump_org
   ld (vib_reljump_addr),a
   ld a,$01
-  ld (arp_count_addr),a
-  ld (arp_count2_addr),a
+  ld (arp_length_addr),a
+  ld (arp_length2_addr),a
 
   ld a,(hl)
   inc hl
@@ -554,7 +557,7 @@ vib_reljump_org:
   jp .next_command
 
 .not_vib_properties:
-  djnz .not_arp_count
+  djnz .not_arp_length
 
   ld a,(hl)
   inc hl
@@ -562,13 +565,13 @@ vib_reljump_org:
   jr nz,.arp_not_0
   ld a,$20
 .arp_not_0:
-  ld (arp_count_addr),a
-  ld (arp_count2_addr),a
+  ld (arp_length_addr),a
+  ld (arp_length2_addr),a
   xor a
   ld (vib_reljump_addr),a
   jp .next_command
 
-.not_arp_count:
+.not_arp_length:
   djnz .not_rest
 
   ld a,(hl)

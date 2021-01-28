@@ -6,11 +6,10 @@
 ;   relocate_d is the LSB of the data of a single channel, it can be $00 (ch 0), $40 (ch 1), $80 (ch 2), $c0 (ch 3)
 ; the drumbass driver, db_driver, is not relocatable, its origin is assumed to be $c6ec + 4 * driver.size
 
-
 macro driver_init
 driver_init_c:
   ld c,4
-  ld de,$c6ec
+  ld de,driver_ram
 
 .loop:
   ld a,c
@@ -95,7 +94,7 @@ driver_init_c:
 
 
   ld hl,drumbass
-  ld de,$c6ec + 4 * ch_driver.size
+  ld de,driver_ram + 4 * ch_driver.size
   ld bc,drumbass.size
   ldir
 
@@ -116,21 +115,63 @@ driver_init_c:
   out ($38),a
 end macro
 
+; fasmg is wonderful
+relocate_a.table:
+relocatable relocate_a,relocate_a.len,relocate_a
+relocate_w.table:
+relocatable relocate_w,relocate_w.len,relocate_a
+relocate_d.table:
+relocatable relocate_d,relocate_d.len,relocate_a
+
 ch_driver:
-virtual at $0000
-ch_driver_org:
+db ch_driver.data
+virtual at relocate_a
+
+smcable pw_state,pw_state_addr
+smcable pw_change,pw_change_addr
+smcable pw_max2,pw_max2_addr
+smcable pw_max,pw_max_addr
+smcable pw_min,pw_min_addr
+smcable pw_min2,pw_min2_addr
+
+smcable vib_reljump,vib_reljump_addr
+smcable arp_length,arp_length_addr
+smcable arp_index,arp_index_addr
+smcable arp_address,arp_address_addr
+
+smcable vib_state,vib_state_addr
+smcable vib_delay,vib_delay_addr
+smcable vib_change,vib_change_addr
+smcable vib_max,vib_max_addr
+smcable vib_offset,vib_offset_addr
+
+smcable note_length,note_length_addr
+smcable mask,mask_addr
+smcable rest_length,rest_length_addr
+
+smcable channel_pointer,channel_pointer_addr
+smcable pw_start,pw_start_addr
+smcable arp_length2,arp_length2_addr
+smcable vib_delay_reset,vib_delay_reset_addr
+smcable vib_difference,vib_difference_addr
+smcable vib_speed,vib_speed_addr
+
+smcable notelength_reljump,notelength_reljump_addr
+smcable notelength_argument,notelength_argument_addr
+
+pulsewavex := relocate_w
+pulsewavex.freq := pulsewavex + pulsewave.freq
+pulsewavex.width := pulsewavex + pulsewave.width
+pulsewavex.mask := pulsewavex + pulsewave.mask
 
 ; ramp pulse width
-.pw_state := $ + 1
-  ld hl,$0000
-.pw_change := $ + 1
-  ld de,$0000
+  ld hl,pw_state + $0000
+  ld de,pw_change + $0000
   or a
 .pw_direction := $ + 1
   adc hl,de
   jr nc,.pw_no_carry
 
-relocate_a =: $ + 1
   ld a,(.pw_direction)
   cp $5a
   jr z,.pw_set_sbc
@@ -140,24 +181,20 @@ relocate_a =: $ + 1
   sub l
   ld l,a
 
-.pw_max2 := $ + 1             ; double of (.pw_max)
-  ld a,$fe
+  ld a,pw_max2 + $fe          ; double of (.pw_max)
   sub h
   ld h,a
 
   ld a,$5a
-relocate_a =: $ + 1
   ld (.pw_direction),a
   jr .after_pw
 
 .pw_no_carry:
   ld a,h
-.pw_max := $ + 1
-  cp $ff
+  cp pw_max
   jr c,.pw_set_adc
 
-.pw_min := $ + 1
-  cp $00
+  cp pw_min
   jr nc,.after_pw
 
 .pw_set_sbc:
@@ -165,41 +202,35 @@ relocate_a =: $ + 1
   sub l
   ld l,a
 
-.pw_min2 := $ + 1             ; double of (.pw_min)
-  ld a,$00
+  ld a,pw_min2
   sub h
   ld h,a
 
   ld a,$52
-relocate_a =: $ + 1
   ld (.pw_direction),a
 
 .after_pw:
-relocate_a =: $ + 1
-  ld (.pw_state),hl
+  ld (pw_state_addr),hl
   ld a,h
-relocate_a =: $ + 1
-  ld (pulsewave0.width),a
+  ld (pulsewavex.width),a
 
 
 ; arpeggio / vibrato
-  jr $ + 2                    ; will be SMC'd to jump to .vib to do vibrato
-.vib_reljump:
+  jr vib_reljump + $ + 2      ; will be SMC'd to jump to .vib to do vibrato
+vib_reljump_org:
 
 ; arpeggio
-.arp_index := $ + 1
-relocate_d =: $ + 1
-  ld hl,$d900
+  ld de,arp_index
+  ld hl,arp_address
+  add hl,de
+  ld c,e
   ld b,(hl)
   ex de,hl
   call decode_note
-relocate_w =: $ + 1
-  ld (pulsewave0.freq),hl
-  ld a,e
-  and $3f
+  ld (pulsewavex.freq),hl
+  ld a,c
   inc a
-.arp_count := $ + 1
-  cp $01
+  cp arp_length
   jr c,.arp_not_last
   xor a
 .arp_not_last:
@@ -207,26 +238,21 @@ relocate_w =: $ + 1
   ld a,e
   and $c0
   or l
-relocate_a =: $ + 1
-  ld (.arp_index),a
+  ld (arp_index_addr),a
   jr .after_arp_vib
 
 
 ; vibrato
 .vib:
-.vib_state := $ + 1
-  ld hl,$0000                 ; SMC vibrato state
-.vib_delay := $ + 1
-  ld a,$00
+  ld hl,vib_state
+  ld a,vib_delay
   dec a
   jr z,.start_vib
-relocate_a =: $ + 1
-  ld (.vib_delay),a
+  ld (vib_delay_addr),a
   jr .vib_end
 
 .start_vib:
-.vib_change := $ + 1
-  ld de,$0000                 ; SMC vib change
+  ld de,vib_change
   or a
 .vib_direction := $ + 1
   adc hl,de
@@ -240,70 +266,53 @@ relocate_a =: $ + 1
   ld h,a
   inc hl
   ld a,$5a                    ; set back to ADC
-relocate_a =: $ + 1
   ld (.vib_direction),a
-relocate_a =: $ + 1
-  ld (.vib_state),hl
+  ld (vib_state_addr),hl
   jr .vib_end
 
 .vib_no_overflow:
-.vib_max := $ + 1
-  ld de,$0001
+  ld de,vib_max + $0001
   or a
   sbc hl,de
   jr c,.vib_end_read
 
   ex de,hl
   sbc hl,de
-relocate_a =: $ + 1
-  ld (.vib_state),hl
+  ld (vib_state_addr),hl
   jr .vib_end
 
 .vib_end_read:
-relocate_a =: $ + 1
-  ld hl,(.vib_state)
+  ld hl,(vib_state_addr)
 .vib_end:
-.vib_offset := $ + 1
-  ld de,$0000
+  ld de,vib_offset
   add hl,de
-relocate_w =: $ + 1
-  ld (pulsewave0.freq),hl
+  ld (pulsewavex.freq),hl
 
 .after_arp_vib:
 
 
 ; note length
 .play_decrement:
-.note_length := $ + 1
-  ld a,$01
+  ld a,note_length + $01
   dec a
   jr z,.silent_decrement
-relocate_a =: $ + 1
-  ld (.note_length),a
-.mask := $ + 1
-  ld a,$00
-relocate_w =: $ + 1
-  ld (pulsewave0.mask),a
-relocate_a =: $ + 1
+  ld (note_length_addr),a
+  ld a,note_mask
+  ld (pulsewavex.mask),a
   jp .next
 
 .silent_decrement:
-relocate_w =: $ + 1
-  ld (pulsewave0.mask),a
-.rest_length := $ + 1
-  ld a,$01
+  ld (pulsewavex.mask),a
+  ld a,rest_length + $01
   dec a
   jr z,.read_note
-relocate_a =: $ + 1
-  ld (.rest_length),a
-relocate_a =: $ + 1
+  ld (rest_length_addr),a
   jp .next
 
 
 ; read next note
 .read_note:
-.channel_pointer := $ + 1
-  ld hl,$0000
+  ld hl,channel_pointer
 .next_command:
   ld a,(hl)
   inc hl
@@ -313,46 +322,38 @@ relocate_a =: $ + 1
 
 ; reset arpeggio
   xor a
-relocate_a =: $ + 1
-  ld (.arp_index),a
+  ld (arp_index_addr),a
 
 ; do pulse width
   ld e,a
-.pw_start := $ + 1
-  ld a,$00
+  ld a,pw_start
   or a
   jr z,.skip_pwset
   ld d,a
-relocate_a =: $ + 2
-  ld (.pw_state),de
+  ld (pw_state_addr),de
 .skip_pwset:
 
 ; read all notes of arpeggio (vibrato will read the first of these later)
-.arp_count2 := $ + 1
-  ld a,$01
+  ld a,arp_length2 + $01
   or a
   jr nz,.arp_not_zero
   ld a,$40
 .arp_not_zero:
   ld c,a
   ld b,$00
-relocate_d =: $ + 1
-  ld de,$d900
+  ld de,$d900 + relocate_d
   dec hl
   ldir
 
 ; read note length
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.channel_pointer),hl
+  ld (channel_pointer_addr),hl
 
 ; process note length
-.note_length_argument := $ + 1
-  ld e,$00
-.note_length_jr := $ + 1
-  jr $ + 2
-.after_jr_length:
+  ld e,notelength_argument
+  jr notelength_reljump + $ + 2
+.notelength_reljump_org:
   sub e
   jr nc,.add_length_no_overflow
 
@@ -362,11 +363,9 @@ relocate_a =: $ + 1
 
 .add_length_no_overflow:
   inc a
-relocate_a =: $ + 1
-  ld (.rest_length),a
+  ld (rest_length_addr),a
   ld a,e
-relocate_a =: $ + 1
-  ld (.note_length),a
+  ld (note_length_addr),a
   jr .after_length
 
 .jr_sub:
@@ -378,12 +377,10 @@ relocate_a =: $ + 1
   ld a,1
 
 .sub_length_no_overflow:
-relocate_a =: $ + 1
-  ld (.note_length),a
+  ld (note_length_addr),a
   ld a,e
   inc a
-relocate_a =: $ + 1
-  ld (.rest_length),a
+  ld (rest_length_addr),a
   jr .after_length
 
 .jr_frac:
@@ -393,48 +390,37 @@ relocate_a =: $ + 1
   ld a,c
   sub h
   inc a
-relocate_a =: $ + 1
-  ld (.rest_length),a
+  ld (rest_length_addr),a
   ld a,h
   or a
   jr z,.read_note
-relocate_a =: $ + 1
-  ld (.note_length),a
+  ld (note_length_addr),a
 
 .after_length:
 
-.vib_delay_reset := $ + 1
-  ld a,$01
-relocate_a =: $ + 1
-  ld (.vib_delay),a
+  ld a,vib_delay_reset + $01
+  ld (vib_delay_addr),a
 
   
-relocate_a =: $ + 1
-  ld (.vib_offset),hl
+  ld (vib_offset_addr),hl
   add hl,hl
   push hl
-.vib_difference := $ + 1
-  ld e,$00
+  ld e,vib_difference
   call e_mul_h
   ld e,l
   ld d,h
-relocate_a =: $ + 1
-  ld (.vib_state),hl
+  ld (vib_state_addr),hl
   add hl,hl
-relocate_a =: $ + 1
-  ld (.vib_max),hl
+  ld (vib_max_addr),hl
   pop hl
-.vib_speed := $ + 1
-  ld e,$00
+  ld e,vib_speed
   call e_mul_h
-relocate_a =: $ + 1
-  ld (.vib_change),hl
+  ld (vib_change_addr),hl
 
   
   ; TODO handle vibrato offset values
-  ; written after the above comment: maybe it's done, check while debugging
+  ; update: maybe it's done, check while debugging
 
-relocate_a =: $ + 1
   jp .next
 
 .parse_command:
@@ -448,32 +434,25 @@ relocate_a =: $ + 1
 
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.pw_start),a
+  ld (pw_start_addr),a
 
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.pw_min),a
+  ld (pw_min_addr),a
   add a,a
-relocate_a =: $ + 1
-  ld (.pw_min2),a
+  ld (pw_min2_addr),a
 
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.pw_max),a
+  ld (pw_max_addr),a
   add a,a
-relocate_a =: $ + 1
-  ld (.pw_max2),a
+  ld (pw_max2_addr),a
 
   ld e,(hl)
   inc hl
   ld d,(hl)
   inc hl
-relocate_a =: $ + 2
-  ld (.pw_change),de
-relocate_a =: $ + 1
+  ld (pw_change_addr),de
   jp .next_command
 
 .not_pwset:
@@ -482,11 +461,8 @@ relocate_a =: $ + 1
 
   ld a,(hl)
   inc hl
-full_mask := $ + 1
-  and $03
-relocate_a =: $ + 1
-  ld (.mask),a
-relocate_a =: $ + 1
+  and full_mask
+  ld (mask_addr),a
   jp .next_command
 
 .not_maskset:
@@ -498,36 +474,29 @@ relocate_a =: $ + 1
 .not_notelength_additive:
   djnz .not_notelength_subtractive
 
-  ld a,.jr_sub - .after_jr_length
+  ld a,.jr_sub - .notelength_reljump_org
   jr .set_notelength
 
 .not_notelength_subtractive:
   djnz .not_notelength_fractional
 
-  ld a,.jr_frac - .after_jr_length
+  ld a,.jr_frac - .notelength_reljump_org
 .set_notelength:
-relocate_a =: $ + 1
-  ld (.note_length_jr),a
+  ld (notelength_reljump_addr),a
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.note_length_argument),a
-relocate_a =: $ + 1
+  ld (notelength_argument_addr),a
   jp .next_command
 
 .not_notelength_fractional:
   djnz .not_glide
 
-  ld a,.vib - .vib_reljump
-relocate_a =: $ + 1
-  ld (.vib_reljump - 1),a
+  ld a,.vib - .vib_reljump_org
+  ld (vib_reljump_addr),a
   ld a,$01
-relocate_a =: $ + 1
-  ld (.arp_count),a
-relocate_a =: $ + 1
-  ld (.arp_count2),a
-relocate_a =: $ + 1
-  ld (.vib_delay),a
+  ld (arp_length_addr),a
+  ld (arp_length2_addr),a
+  ld (vib_delay_addr),a
 
   ld d,(hl)
   inc hl
@@ -535,12 +504,10 @@ relocate_a =: $ + 1
   inc hl
   ld c,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.channel_pointer),hl
+  ld (channel_pointer_addr),hl
   ld b,d
   call decode_note
-relocate_d =: $ + 1
-  ld ($d900),hl
+  ld ($d900 + relocate_d),hl
   ld b,e
   ex de,hl
   call decode_note
@@ -549,62 +516,48 @@ relocate_d =: $ + 1
   jr nc,.glide_up
 
   add hl,de
-relocate_a =: $ + 1
-  ld (.vib_offset),hl
+  ld (vib_offset_addr),hl
   ex de,hl
   or a
   sbc hl,de
-relocate_a =: $ + 1
-  ld (.vib_max),hl
+  ld (vib_max_addr),hl
   call hl_div_c
-relocate_a =: $ + 1
-  ld (.vib_change),hl
+  ld (vib_change_addr),hl
   ld a,$52
-relocate_a =: $ + 1
   ld (.vib_direction),a
   jp .next
 
 .glide_up:
-relocate_a =: $ + 1
-  ld (.vib_max),hl
-relocate_a =: $ + 1
-  ld (.vib_offset),de
+  ld (vib_max_addr),hl
+  ld (vib_offset_addr),de
   call hl_div_c
-relocate_a =: $ + 1
-  ld (.vib_change),hl
+  ld (vib_change_addr),hl
   ld a,$5a
-relocate_a =: $ + 1
   ld (.vib_direction),a
   jr .next
 
 .not_glide:
   djnz .not_vib_properties
 
-  ld a,.vib - .vib_reljump
-relocate_a =: $ + 1
-  ld (.vib_reljump - 1),a
+  ld a,.vib - .vib_reljump_org
+  ld (vib_reljump_addr),a
   ld a,$01
-relocate_a =: $ + 1
-  ld (.arp_count),a
-relocate_a =: $ + 1
-  ld (.arp_count2),a
+  ld (arp_length_addr),a
+  ld (arp_length2_addr),a
 
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.vib_delay_reset),a
+  ld (vib_delay_reset_addr),a
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.vib_difference),a
+  ld (vib_difference_addr),a
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.vib_speed),a
+  ld (vib_speed_addr),a
   jp .next_command
 
 .not_vib_properties:
-  djnz .not_arp_count
+  djnz .not_arp_length
 
   ld a,(hl)
   inc hl
@@ -612,22 +565,18 @@ relocate_a =: $ + 1
   jr nz,.arp_not_0
   ld a,$20
 .arp_not_0:
-relocate_a =: $ + 1
-  ld (.arp_count),a
-relocate_a =: $ + 1
-  ld (.arp_count2),a
+  ld (arp_length_addr),a
+  ld (arp_length2_addr),a
   xor a
-relocate_a =: $ + 1
-  ld (.vib_reljump - 1),a
+  ld (vib_reljump_addr),a
   jp .next_command
 
-.not_arp_count:
+.not_arp_length:
   djnz .not_rest
 
   ld a,(hl)
   inc hl
-relocate_a =: $ + 1
-  ld (.rest_length),a
+  ld (rest_length_addr),a
   jr .next
 
 .not_rest:
@@ -636,10 +585,10 @@ relocate_a =: $ + 1
   ld e,(hl)
   inc hl
   ld d,(hl)
-  ld hl,($d8a2)
+  ld hl,(appvar_start)
   add hl,de
 relocate_a =: $ + 1
-  ld (.channel_pointer),hl
+  ld (channel_pointer_addr),hl
   jp .next_command
 
 .not_uncond_jump:
@@ -648,7 +597,7 @@ relocate_a =: $ + 1
   ld e,(hl)
   inc hl
   ex de,hl
-  ld h,$da
+  ld h,djnz_counters_ram shr 8
   dec (hl)
   ex de,hl
   ld e,(hl)
@@ -657,8 +606,7 @@ relocate_a =: $ + 1
   inc hl
   jp nz,.next_command
   ex de,hl
-relocate_a =: $ + 1
-  ld (.channel_pointer),hl
+  ld (channel_pointer_addr),hl
   jp .next_command
 
 .not_djnz:
@@ -666,7 +614,7 @@ relocate_a =: $ + 1
 
   ld e,(hl)
   inc hl
-  ld d,$da
+  ld d,djnz_counters_ram shr 8
   ld a,(hl)
   inc hl
   ld (de),a
@@ -679,24 +627,14 @@ relocate_a =: $ + 1
 ch_driver.size := $ - $$
 load ch_driver.data: ch_driver.size from $$
 end virtual
-db ch_driver.data
 
 repeat 1,x:ch_driver.size
   display "driver size per channel: ",`x,10
 end repeat
 
-iterate relocate,relocate_a,relocate_d,relocate_w
-  relocate.table:
-  irpv address,relocate
-    relocate#_len = %%
-    dw address
-  end irpv
-  relocate.len := relocate#_len
-end iterate
-
 drumbass:
-virtual at $c6ec + 4 * ch_driver.size
-  jp $c6ec
+virtual at driver_ram + 4 * ch_driver.size
+  jp driver_ram
   drumbass.size := $ - $$
   load drumbass.data: drumbass.size from $$
 end virtual

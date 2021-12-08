@@ -1,47 +1,195 @@
 include "../../z80.inc"
-include "../../ti83plusg.inc"
-format binary as "bin"
+include "../relocatable.inc"
+include "../../tiformat.inc"
+include "../../ti83plusg_.inc"
+format ti executable "A"
 
-  db $bb,$6d
-  org $9d95
+include "../ram.z80"
 
   di
-  push iy
-  ld a,4
-  out ($27),a
-  ld a,1
-  out ($05),a
-  out ($20),a
-  xor a
-  out ($03),a
-  jp start
+  ld a,2
+  out [$05],a
+  ld hl,$8000
+  ld de,ram2_safe
+  ld bc,$ffff - ram2_safe
+  ldir
 
+  ld a,4
+  out [$27],a
+  ld a,1
+  out [$05],a
+  out [$20],a
+  xor a
+  out [$03],a
+  jp start
   org $4000 + $
+start:
+  ld hl,interrupt_table_ram
+  ld a,h
+  ld bc,$0100
+  ld e,b
+  ld d,h
+  ld [hl],interrupt_ram and $00ff
+  ldir
+  ld i,a
+  im 2
+
+  include "cpuspeed.z80"
+
+repeated_init:
+  xor a
+  out [$01],a
+.wait_release:
+  in a,[$04]
+  and $08
+  jq z,.wait_release
+  in a,[$01]
+  inc a
+  jq nz,.wait_release
+
+  driver_init
+  bitbang_init
+
+  ld hl,song
+  ld de,start_channels
+  ld bc,12
+  ldir
+  ld hl,0
+  ld [appvar_start],hl
+
+  ld a,$fd
+  out [$01],a
+.wait_enter:
+  in a,[$04]
+  and $08
+  jq z,done
+  in a,[$01]
+  rrca
+  jq c,.wait_enter
+
+  ld a,$bf
+  out [$01],a
+  nop
+  nop
+  in a,[$01]
+  ld b,a
+  rrc b
+  sbc a,a
+  and $03
+  ld [drum_globalmask_addr],a
+  ld [bass_globalmask_addr],a
+
+  rrc b
+  sbc a,a
+  and $03
+  ld [global_mask_addr - relocate_a + 3 * ch_driver.size + driver_ram],a
+
+  rrc b
+  sbc a,a
+  and $03
+  ld [global_mask_addr - relocate_a + 2 * ch_driver.size + driver_ram],a
+
+  rrc b
+  sbc a,a
+  and $03
+  ld [global_mask_addr - relocate_a + 1 * ch_driver.size + driver_ram],a
+
+  rrc b
+  sbc a,a
+  and $03
+  ld [global_mask_addr - relocate_a + 0 * ch_driver.size + driver_ram],a
+
+  ld hl,[song + 0]
+  ld [channel_pointer_addr - relocate_a + 0 * ch_driver.size + driver_ram],hl
+  ld hl,[song + 2]
+  ld [channel_pointer_addr - relocate_a + 1 * ch_driver.size + driver_ram],hl
+  ld hl,[song + 4]
+  ld [channel_pointer_addr - relocate_a + 2 * ch_driver.size + driver_ram],hl
+  ld hl,[song + 6]
+  ld [channel_pointer_addr - relocate_a + 3 * ch_driver.size + driver_ram],hl
+  ld hl,[song + 8]
+  ld [drum_pointer_addr],hl
+  ld hl,[song + 10]
+  ld [bass_pointer_addr],hl
+
+  ld a,6
+  ld [channels_playing],a
+
+
+  ld a,$40 ; 32768 Hz / 3     ; 50 Hz -> timer 2
+  out [$33],a
+  ld a,$01 ; loop
+  out [$34],a
+  ld a,218 ; 32768 / 3 / 218 = 50.1 Hz
+  out [$35],a
+
+  ld a,$80 ; cc               ; 176cc -> timer 1
+  out [$30],a
+  ld a,$03 ; loop + interrupt
+  out [$31],a
+  ld a,176 ; 176 cc
+  out [$32],a
+
+  ei
+  call driver_ram
+  di
+
+  xor a
+  out [$33],a
+  out [$30],a
+
+  jq repeated_init
+
+done:
+  ld a,$81
+  out [$07],a
+  jp after8000
+
+  org $ - $4000
+after8000:
+  inc a
+  out [$05],a
+  ld hl,ram2_safe
+  ld de,$8000
+  ld bc,$ffff - ram2_safe
+  ldir
+
+  xor a
+  out [$00],a
+  out [$01],a
+  out [$05],a
+  out [$20],a
+  out [$27],a
+  out [$30],a
+  out [$31],a
+
+.keyrel_loop:
+  in a,[$04]
+  and $08
+  jq z,.keyrel_loop
+  in a,[$01]
+  inc a
+  jq nz,.keyrel_loop
+  dec a
+  out [$01],a
+
+  ld a,$0b
+  out [$03],a
+  ld iy,ti.flags
+  im 1
+  ei
+  ret
+
   include "../math.z80"
   include "../driver.z80"
   include "../bitbang.z80"
 
-start:
-  driver_init
-  bitbang_init
+include "../../z80.inc"
+include "../relocatable.inc"
+include "../../tiformat.inc"
+include "../../ti83plusg_.inc"
+format ti executable "A"
 
-  jp $c6ec
+include "../ram.z80"
 
-done:
-  di
-  jp after8000
-  org $ - $4000
-after8000:
-  xor a
-  out ($00),a
-  out ($05),a
-  out ($20),a
-  out ($27),a
-  out ($30),a
-  out ($31),a
-  ld a,$0b
-  out ($03),a
-  pop iy
-  im 1
-  ret
 

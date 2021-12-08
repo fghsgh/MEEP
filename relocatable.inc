@@ -1,5 +1,3 @@
-include "z80.inc"
-
 ; RELOCATABLE AND SMCABLE
 ; this file defines two fasmg macros: relocatable and smcable (and also some things to make it work together with z80.inc)
 
@@ -8,6 +6,7 @@ include "z80.inc"
 ; the address of each word which is relative to this element will be written in the location where the macro was called, from first to last
 ; the length of this table (measured in words) will be stored to the literal constant <length>
 ; <offset> is an offset that is applied to the address before storing it into the table (for example, for a relocatable origin, this would be equal to the first argument)
+; (in other words, it is the value "to be added" to values in the table when relocating code, and an offset of 0 means the addresses will be absolute)
 ;
 ; the purpose of this is to generate code that behaves as if a value were known at assembly time, but instead, it is calculated at runtime and substituted into the program using SMC once, after which it becomes a standard static value with fast access
 ;
@@ -40,91 +39,82 @@ include "z80.inc"
 ; > smcable here,here_place
 
 macro ?!
-	local r_count,r_addresses,r_scaleelement,r_elements
-	local s_count,s_addresses,s_elements
+  local relocatable_data,smcable_data,scaleelement
 
-	r_count = 1
-	define r_elements
-	define r_addresses
-	element r_scaleelement
+  define relocatable_data
+  relocatable_data.count = 0
+  element scaleelement
 
-	s_count = 1
-	define s_elements
-	define s_addresses
-	define s_defaults
+  define smcable_data
+  smcable_data.count = 0
 
-	macro @z80.word size*,value*
-		local v,e,smc
-		v := value
-		repeat elementsof v,i:1
-			repeat 1,j:i metadataof v
-				if (%% eq 1) & (defined s_elements.#j) & (v relativeto s_elements.#j)
-					s_addresses.#j := $
-				else if (defined r_elements.#j) & (i elementof v relativeto r_elements.#j)
-					r_addresses.#j =: (i scaleof v) * r_scaleelement + $
-				else
-					err "variable term used where not expected."
-				end if
-			end repeat
-		end repeat
-		emit size: 0 scaleof v
-	end macro
+  macro @z80.word size*,value*
+    local v
+    v := value
+    repeat elementsof v,el:1
+      repeat 1,index:el metadataof v
+        if (defined smcable_data.index) & (el elementof v relativeto smcable_data.index)
+          if definite smcable_data.index.addr
+            err "smcable element used more than once"
+          else
+            smcable_data.index.addr := $
+          end if
+        else if (defined relocatable_data.index) & (el elementof v relativeto relocatable_data.index)
+          if ~definite relocatable_data.index.count
+            relocatable_data.index.count = 0
+          end if
+          repeat 1,jndex:relocatable_data.index.count + 1
+            relocatable_data.index.count = jndex
+            relocatable_data.index.jndex := (el scaleof v) * scaleelement + $
+          end repeat
+        else
+          err "variable term used where not expected"
+        end if
+      end repeat
+    end repeat
+    emit size:0 scaleof v
+  end macro
+  macro @z80.byte value*
+    @z80.word 1,value
+  end macro
 
-	macro relocatable name*,length*,offset*
-		local lengthcount,ofs,el
+  macro relocatable name*,length*,offset*
+    local offset_
 
-		repeat 1,c:r_count
-			r_count = c + 1
-			lengthcount = 0
-			element el:c
-			r_elements.#c := el
-			name := el
-			ofs := offset
-			irpv address,r_addresses.#c
-				repeat 1 scaleof address
-					dw address - %% * r_scaleelement - ofs
-				end repeat
+    repeat 1,index:relocatable_data.count + 1
+      relocatable_data.count = index
+      element relocatable_data.index:index
+      name := relocatable_data.index
+      offset_ := offset
+      repeat relocatable_data.index.count.final,jndex:1
+        repeat 1 scaleof relocatable_data.index.jndex
+          dw relocatable_data.index.jndex - %% * scaleelement - offset_
+        end repeat
+      end repeat
+      length := relocatable_data.index.count.final
+    end repeat
+  end macro
 
-				lengthcount = lengthcount + 1 scaleof address
-			end irpv
-		end repeat
+  macro smcable name*,address*
+    repeat 1,index:smcable_data.count + 1
+      smcable_data.count = index
+      element smcable_data.index:index
+      name := smcable_data.index
+      if defined smcable_data.index.addr
+        address := smcable_data.index.addr
+      else
+        err `name," was never used"
+      end if
+    end repeat
+  end macro
 
-		length := lengthcount
-	end macro
+  postpone
+    relocatable_data.count.final := relocatable_data.count
+    repeat relocatable_data.count.final,index:1
+      relocatable_data.index.count.final := relocatable_data.index.count
+    end repeat
+  end postpone
 
-	macro smcable name*,address*
-		local el
-
-		repeat 1,c:s_count
-			s_count = c + 1
-			element el:c
-			s_elements.#c := el
-			name := el
-			address := s_addresses.#c
-		end repeat
-	end macro
-
-	purge ?
+  purge ?
 end macro
 
-
-; ###############################################################################################
-; test
-; tests: multiple relocatables, one relative to the other, a relocatable smcable
-;
-; org origin
-;
-;	jp exit
-;	ld hl,place + $5555
-;	ld (variable + 5),hl
-;	ld a,len
-;	ld b,vlen
-;	ld (place_addr),hl
-;	ld hl,(variable + 5)
-;
-;exit:
-;	ret
-;
-;relocatable variable,vlen,0
-;relocatable origin,len,origin
-;smcable place,place_addr

@@ -1,6 +1,10 @@
 waves_ram := $c000
+general_tuning := $c099
+bass_tuning := $c0b1
 appvar_start := $c0bd
+channels_playing := $c0bf
 interrupt_ram := $c0c0
 djnz_counters_ram := $c100
 interrupt_table_ram := $c200
-drivers_ram := $c301
+driver_ram := $c301
+ram2_safe := $da7e

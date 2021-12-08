@@ -1,28 +1,28 @@
 ; this source file contains some math routines
-; mainly: decoding note codes, 8*8 multiplication (for vibrato and fractional note lengths), 16/8 division (for glissando), 32-bit float multiplication (for frequency calibration)
+; mainly: decoding note codes, 8*8 multiplication (for vibrato and fractional note lengths), 16/8 division (for glissando), 32-bit multiplication (for frequency calibration)
 
 ; input:
-;  B: note code ($XY as defined in format.asm)
+;  C: note code ($XY as defined in format.asm) (range is not checked)
 ; output:
 ;  HL: frequency
 ; destroys:
-;  AF,B
+;  AF,B=0
 decode_note:
-  ld a,b
+  ld a,c
   and $f0
   rrca
   rrca
   rrca
-  add a,$72
+  add a,general_tuning and $00ff
   ld l,a
-  ld h,$d8
-  ld a,(hl)
+  ld h,general_tuning shr 8
+  ld a,[hl]
   inc l
-  ld h,(hl)
+  ld h,[hl]
   ld l,a
 
   ld a,$09
-  sub b
+  sub c
   and $0f
   ld b,a
 .loop:
@@ -40,33 +40,41 @@ decode_note:
 ;  A: frequency
 ; destroys:
 ;  F,B,HL
-decode_note_bass:
+macro decode_note_bass
+  local not_less_rshift,loop,after
+
   ld a,b
   and $f0
   rrca
   rrca
   rrca
   rrca
-  add a,$92
+  cp 7
+  jr nc,not_less_rshift
+  dec b
+not_less_rshift:
+  add a,bass_tuning and $00ff
   ld l,a
-  ld h,$d8
-  ld l,(hl)
+  ld h,bass_tuning shr 8
+  ld l,[hl]
 
   ld a,b
   dec a
   and $0f
   ld b,a
   ld a,l
-  ret z
+  jq z,after
 
-.loop:
+loop:
   srl a
-  djnz .loop
-  ret nc
-  inc a
-  ret
+  djnz loop
+  adc a,0
+
+after:
+end macro
 
 
+; E * H -> HL
 e_mul_h:
   ld d,0
   sla h
@@ -84,6 +92,37 @@ end repeat
   ret
 
 
+; A * DE -> AHL
+a_mul_de:
+  ld b,$08
+  ld hl,0
+
+.loop:
+  add hl,hl
+  rla
+  jr nc,.not_add
+  add hl,de
+.not_add:
+  djnz .loop
+
+
+;hl_div_c:
+;  ld b,16
+;  add hl,hl
+;  ld a,h
+;  jr c,.overflow
+;.loop:
+;  cp c
+;  jr c,.zero
+;  sub c
+;  inc l
+;.zero:
+;  sla l
+;  rla
+;  jr c,.overflow
+;  djnz .loop
+
+; HL / B -> 
 hl_div_b:
   add hl,hl
   ld a,h
@@ -118,18 +157,126 @@ end repeat
   ret
 
 
-hl_div_c:
-  ld b,16
+;hl_div_c:
+;  ld b,16
+;  xor a
+;.loop:
+;  add hl,hl
+;  rla
+;  jr c,.overflow
+;  cp c
+;  jr c,.nofit
+;.overflow:
+;  inc l
+;  sub c
+;.nofit:
+;  djnz .loop
+;  ret
+
+; 24*24 multiplication (29 bytes, 1631-2639cc)
+; input:
+;  IYLDE, HLC, 24-bit operands
+; outputs:
+;  HLCAIX: output
+; destroys:
+;  F, B=0
+macro iylde_mul_hlc
+  local no_carry,loop
+
+  ld ix,0
   xor a
-.loop:
+  ld b,24
+loop:
+  add ix,ix
+  adc a,a
+  rl c
+  adc hl,hl
+  jq nc,no_carry
+  add ix,de
+  adc a,iyl
+  jq nc,no_carry
+  inc b
+  jq nz,no_carry
+  inc hl
+no_carry:
+  djnz loop
+
+end macro
+
+; 32*24 multiplication (38 bytes, 1706-3194cc)
+; input:
+;  CDE: 24-bit number
+;  DE'BC: 32-bit number
+; output:
+;  C'DE'HL'HL: 56-bit result
+;  DEBC': 32-bit input
+; destroys:
+;  F, B=0
+macro de_mul_debc
+  local loop,no_carry,no_add
+
+  ld hl,0
+  exx
+  ld hl,0
+  ld b,24
+
+loop:
   add hl,hl
-  rla
-  jr c,.overflow
-  cp c
-  jr c,.nofit
-.overflow:
+  exx
+  adc hl,hl
+  rl e
+  rl d
+  rl c
+  exx
+  jq nc,no_add
+
+  add hl,de
+  exx
+  adc hl,bc
+  jq nc,no_carry
+  inc e
+  jq nz,no_carry
+  inc d
+  jq nz,no_carry
+  inc c
+no_carry:
+  exx
+no_add:
+
+  djnz loop
+end macro
+
+; 16*32 multiplication (30 bytes, 2608-4048cc)
+; input:
+;  BC: 16-bit number
+;  DEHL: 32-bit number
+; output:
+;  DEHLIX: 48-bit number
+; destroys:
+;  A=0, F
+macro bc_mul_dehl
+  local loop,no_carry,no_add
+
+  ld a,32
+  ld ix,0
+
+loop:
+  add ix,ix
+  adc hl,hl
+  rl e
+  rl d
+  jq c,no_add
+
+  add ix,bc
+  jq nc,no_carry
   inc l
-  sub c
-.nofit:
-  djnz .loop
-  ret
+  jq nz,no_carry
+  inc h
+  jq nz,no_carry
+  inc de
+no_carry:
+no_add:
+
+  dec a
+  jq nz,loop
+end macro

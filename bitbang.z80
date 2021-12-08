@@ -9,15 +9,22 @@
 ; (labels below are real labels)
 ; (actual data is compressed inside program binary)
 
-; interrupt: (at $caca aka inside statvars)
+; registers used:
+;   A': next value to output
+;   IX: pulsewave0 phase
+;   IY: pulsewave1 phase
+;   BC': pulsewave2 phase
+;   DE': pulsewave3 phase
+
+; interrupt: (at $c0c0)
 ;   ex af,af'
 ;   exx
-;   out ($00),a
+;   out [$00],a
 ;
 ;   ld a,$03
-;   out ($31),a
+;   out [$31],a
 ;
-;   jp (hl)
+;   jp hl
 
 ; pulsewave0: (at $c000)
 ; pulsewave2.freq := $ + 1
@@ -39,12 +46,13 @@
 ;   ei
 ;   ret
 
-; pulsewave1: (at $c014)
+;   nop                       ; padding
+
+; pulsewave1: (at $c015)
 ; pulsewave3.freq := $ + 1
 ;   ld hl,$0000
 ;   add hl,de
 ;   ex de,hl
-;   nop
 ;   ld a,iyh
 ;
 ; pulsewave1.width := $ + 1
@@ -107,7 +115,7 @@
 ;   and $2d
 ;   xor l
 ;   ld l,a
-;   ld (seed),hl
+;   ld [seed],hl
 ;   add a,c
 ;
 ; noisewave.mask := $ + 1
@@ -130,7 +138,7 @@
 ; basswave.length := $ + 1
 ;   ld l,$00
 ; basswave.end:
-;   ld (basswave.state),hl
+;   ld [basswave.state],hl
 ; basswave.size := $ - $$
 ; basswave.mask := $ + 1
 ;   and $00
@@ -142,13 +150,28 @@
 ;   ret
 
 macro bitbang_init
+  local bitbang_init_code
+
+bitbang_init_code:
   ld a,4                      ; copy the regular channels first
-  ld de,$c000
+  ld de,waves_ram
   ld b,e
   ld hl,channels
 
 .channel_loop:                ; copy parts for pulse wave channels
   ld c,ch_size                ; channel-specific part
+  cp 3
+  jq nz,.not_padded_byte
+  dec c
+.not_padded_byte:
+  ex de,hl
+  ld [hl],$21 ; LD HL,****
+  inc hl
+  ld [hl],b
+  inc hl
+  ld [hl],b
+  inc hl
+  ex de,hl
   ldir
   push hl                     ; push hl so the next time we'll have the next channel's channel-specific part
 
@@ -161,7 +184,11 @@ macro bitbang_init
 
   ld hl,pulsewave.next - pulsewave.size
   add hl,de                   ; set next jump address correctly
-  ld (hl),e
+  cp 4
+  jq nz,.not_pad_byte
+  inc e
+.not_pad_byte:
+  ld [hl],e
 
   pop hl
   dec a
@@ -182,38 +209,9 @@ macro bitbang_init
   ldir
 
   ld hl,interrupt             ; set up the interrupt
-  ld de,$caca                 ; in statvars
+  ld de,interrupt_ram
   ld c,interrupt.size
   ldir
-
-  ld hl,$cb00
-  ld b,1
-  ld e,b
-  ld d,h
-  ld (hl),$ca
-  ldir
-  ld a,$cb
-  ld i,a
-
-  ld hl,$c000
-  ld c,l
-  ld b,l
-  ld e,l
-  ld d,l
-  ld ix,$0000
-  di
-  ld iy,$0000
-
-  ld a,$80
-  out ($30),a
-  ld a,$03
-  out ($31),a
-  ld a,176
-  out ($32),a
-
-  exx
-  im 2
-  ei
 end macro
 
 noisewave:
@@ -225,7 +223,7 @@ noisewave.seed := $ + 1
   and $2d
   xor l
   ld l,a
-  ld (noisewave.seed),hl
+  ld [noisewave.seed],hl
   add a,c
 noisewave.size := $ - $$
 load noisewave.data: noisewave.size from $$
@@ -253,7 +251,7 @@ basswave.state := $ + 1
 basswave.length := $ + 1
   ld l,$00
 basswave.end:
-  ld (basswave.state),hl
+  ld [basswave.state],hl
 basswave.size := $ - $$
 basswave.mask := $ + 1
   and $00
@@ -315,33 +313,37 @@ macro ?!
     iterate field,width,mask,next
       pulsewave#i.field := pulsewave#i + pulsewave.field
     end iterate
-    pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq
+    if i = 3
+      pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq + 1
+    else
+      pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq
+    end if
   end repeat
   purge ?
 end macro
 
-ch_size := 8
+ch_size := 5
 channels:
 ; ch0
-  ld hl,$0001
+; ld hl,$0000
   add hl,bc
   ld c,l
   ld b,h
   ld a,ixh
 ; ch1
-  ld hl,$0000
+; nop
+; ld hl,$0000
   add hl,de
   ex de,hl
-  nop
   ld a,iyh
 ; ch2
-  ld hl,$0000
+; ld hl,$0000
   ex de,hl
   add ix,de
   ex de,hl
   ld a,b
 ; ch3
-  ld hl,$0000
+; ld hl,$0000
   ex de,hl
   add iy,de
   ex de,hl
@@ -351,12 +353,12 @@ interrupt:
 virtual at $caca
   ex af,af'
   exx
-  out ($00),a
+  out [$00],a
 
   ld a,$03
-  out ($31),a
+  out [$31],a
 
-  jp (hl)
+  jp hl
 interrupt.size := $ - $$
 load interrupt.data: interrupt.size from $$
 end virtual

@@ -1,0 +1,12 @@
+include "../../z80.inc"
+include "../relocatable.inc"
+include "../../tiformat.inc"
+include "../../ti83plusg_.inc"
+format ti executable "A"
+
+include "../ram.z80"
+
+include "init_driver.z80"
+
+song:
+include "../songs/canon/canon.z80"

@@ -1,0 +1,189 @@
+  di
+
+  ld a,2                      ; store begin of ram page 1 to end of ram page 2
+  out [$05],a
+  ld hl,$8000
+  ld de,ram2_safe
+  ld bc,$ffff - ram2_safe
+  ldir
+
+  ld a,4                      ; set last 256 bytes of bank 3 to page 0
+  out [$27],a
+  ld a,1
+  out [$05],a                 ; set remainder of bank 3 to page 1
+  out [$20],a                 ; set fast mode
+  xor a                       ; kill all interrupt sources
+  out [$03],a
+  jp start                    ; jump to this program in bank 3
+  org $4000 + $
+start:
+  ld hl,interrupt_table_ram   ; set up IM 2
+  ld a,h
+  ld bc,$0100
+  ld e,b
+  ld d,h
+  ld [hl],interrupt_ram and $00ff
+  ldir
+  ld i,a
+  im 2
+
+  include "../cpuspeed.z80"   ; measure CPU speed
+
+repeated_init:                ; this is the part that has to be redone every time the song is restarted
+  xor a                       ; wait for key release
+  out [$01],a
+.wait_release:
+  in a,[$04]                  ; (including ON key)
+  and $08
+  jq z,.wait_release
+  in a,[$01]
+  inc a
+  jq nz,.wait_release
+
+  driver_init                 ; initialize driver
+  bitbang_init                ; initialize bitbang
+
+  ld hl,0                     ; set appvar start (to 0 in this case because we're using absolute addressing)
+  ld [appvar_start],hl
+
+  ld a,$fd                    ; wait for ENTER key to be pressed
+  out [$01],a
+.wait_enter:
+  in a,[$04]
+  and $08
+  jq z,done
+  in a,[$01]
+  rrca
+  jq c,.wait_enter
+
+  ld hl,0                     ; set SP to a table we will be accessing shortly
+  add hl,sp
+  exx
+  ld sp,.sp_data
+
+  ld a,$bf                    ; check for any of the function keys and mute corresponding channels
+  out [$01],a
+  nop
+  nop
+  in a,[$01]
+  ld e,a
+  xor a
+
+  rrc e
+  jr c,.no_mute_drum
+  ld [drum_globalmask.addr],a
+  ld [bass_globalmask.addr],a
+.no_mute_drum:
+
+  ld b,4
+.mute_loop:
+  rrc e
+  pop hl
+  jr c,.mute_channel
+  ld [hl],a
+.mute_channel:
+  djnz .mute_loop
+
+  ld hl,song                  ; set channel pointers (TODO: [appvar_start])
+  ld bc,$06ff
+.set_channel_pointers_loop:
+  pop de
+  ldi
+  ldi
+  djnz .set_channel_pointers_loop
+
+  exx                         ; restore SP back to the stack
+  ld sp,hl
+
+                              ; set timers
+  ld a,$40 ; 32768 Hz / 3     ; 50 Hz -> timer 2
+  out [$33],a
+  ld a,$01 ; loop
+  out [$34],a
+  ld a,218 ; 32768 / 3 / 218 = 50.1 Hz
+  out [$35],a
+
+  ld a,$80 ; 1 cc             ; 176cc -> timer 1
+  out [$30],a
+  ld a,$03 ; loop + interrupt
+  out [$31],a
+  ld a,176 ; 176 cc
+  out [$32],a
+
+  xor a
+  ld hl,pulsewave0
+  ld e,a
+  ld d,a
+  ld ix,$0000
+  ld iy,$0000
+  ex af,af'
+  exx
+
+  ei                          ; call sound driver
+  call driver_ram
+  di
+
+  xor a                       ; stop timers
+  out [$33],a
+  out [$30],a
+
+  jq repeated_init            ; repeat if needed (will exit there)
+
+done:
+  ld a,$81                    ; back to bank 2
+  out [$07],a
+  jp after8000
+
+
+repeated_init.sp_data:
+  dw global_mask.addr - relocate_a + 3 * ch_driver.size + driver_ram
+  dw global_mask.addr - relocate_a + 2 * ch_driver.size + driver_ram
+  dw global_mask.addr - relocate_a + 1 * ch_driver.size + driver_ram
+  dw global_mask.addr - relocate_a + 0 * ch_driver.size + driver_ram
+
+  dw channel_pointer.addr - relocate_a + 0 * ch_driver.size + driver_ram
+  dw channel_pointer.addr - relocate_a + 1 * ch_driver.size + driver_ram
+  dw channel_pointer.addr - relocate_a + 2 * ch_driver.size + driver_ram
+  dw channel_pointer.addr - relocate_a + 3 * ch_driver.size + driver_ram
+  dw drum_pointer.addr
+  dw bass_pointer.addr
+
+
+  org $ - $4000
+after8000:
+  inc a                       ; copy data from page 2 back to page 1
+  out [$05],a
+  ld hl,ram2_safe
+  ld de,$8000
+  ld bc,$ffff - ram2_safe
+  ldir
+
+  xor a                       ; reset: linkport, keypad, bank 3, speed, stack remap, timer 1, timer 2
+  out [$00],a
+  out [$01],a
+  out [$05],a
+  out [$20],a
+  out [$27],a
+  out [$30],a
+  out [$31],a
+
+.keyrel_loop:
+  in a,[$04]                  ; wait for key release
+  and $08
+  jq z,.keyrel_loop
+  in a,[$01]
+  inc a
+  jq nz,.keyrel_loop
+  dec a                       ; reset keypad, just to be nice
+  out [$01],a
+
+  ld a,$0b                    ; set back normal interrupts
+  out [$03],a
+  ld iy,ti.flags              ; and flags
+  im 1
+  ei
+  ret
+
+  include "../math.z80"
+  include "../driver.z80"
+  include "../bitbang.z80"

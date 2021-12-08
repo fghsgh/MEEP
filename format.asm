@@ -14,7 +14,7 @@ format ti appvar
 ; note: $XY,L where L is the note length, Y is the (standard MIDI) octave (X >= 1) and X is the note (0 -> C, B -> B), notes higher than B are undefined but could be set to up to 16-TET with few modifications to the source
 ;   e.g. C3 is $03, A#5 is $A5
 ;   more notes can be put between $XY and L for arpeggios (see command $70)
-; rest: $ff,L where L is the rest length
+; rest: $80,L where L is the rest length
 ; command: $X0 where X is command, optionally with arguments in the following byte(s) (depending on command type)
 ; commands:
 ;  $00: set starting pulse width settings
@@ -48,10 +48,10 @@ format ti appvar
 ;               unlike with pulse width ramping, carry is NOT handled when oscillating the frequency, because frequencies are expected to fall in a "sane" range
 ;    1 byte = value added to / subtracted from frequency each frame while vibrato is active, in 1/512ths of the standard frequency, default $00
 ;               this divided by the previous byte is the number of frames per half oscillation
-;    arpeggio length is set to 1 when this command is used!
-;  $70: set arpeggio length
-;    1 byte = the number of notes in this arpeggio (only bottom 5 bits are considered, and $00 is considered the same as $20, so max = $20), default $01
-;               this turns off vibrato! (vib and arp are mutually exclusive because otherwise the vibrato would have to be applied to all arpeggio notes for which there is not enough time)
+;    this command also enables vibrato (and hence disables arpeggio)
+;  $70: set arpeggio
+;    1 byte = the number of notes in all following arpeggios ($00 has undefined behavior)
+;    this command also enables arpeggio (and hence disables vibrato)
 ;  $80: rest (do not play anything for a set number of frames)
 ;    1 byte = number of frames to rest
 ;  $90: unconditional jump
@@ -62,7 +62,12 @@ format ti appvar
 ;  $b0: set table value
 ;    1 byte = index of value to set
 ;    1 byte = value to set it to, all values are initialized to 0 (there is only one table and it is shared between all channels)
-;  $c0-$f0: end of this channel (program will terminate when all channels have finished)
+;  $c0: sync wave phases to 0
+;    1 byte = bitmask (bit 0 = channel 0, bit 3 = channel 3, bit 4 = bass, bit 5 = noise)
+;               for noise, this sets the random seed to 1 instead
+;  $d0: reserved (as of now, does nothing)
+;  $e0: end of this channel (stop playing notes in this channel, still continue all other channels)
+;  $f0: end of the song (finish all channels immediately)
 
 ; a few notes (pun not intended) about frame timing:
 ;   not having to read a new note, only advancing pulse width/arpeggio/vibrato is much more economical, especially if there are no new commands to be processed
@@ -99,28 +104,20 @@ ch3:
   db $0f
 
 drumbass:
-; drum/bass channel: can play both noise and square waves
-;  $XY with X a MIDI note name and Y an octave: play this note on the bass channel (same as general-purpose pulse wave channels)
-; commands:
-;  $00: play noise/bass sequence
-;    1 word: address of noise/bass sequence (explained below)
-;  $80: play noise
-;    1 byte: number of frames to play noise for (use 0 to simulate a rest)
-;    1 byte: number of frames of silence afterwards
-;  $10-$40,$70,$90-$f0: identical to general-purpose counterparts
+; drum channel:
+;   <len:byte><sequence:word>: play a drum sequence, <len> is the time in frames before the next command should be parsed, <sequence> is a pointer to the start of the drum sequence
+;   if <len> is $00, the next byte specifies a command:
+;     $10,<mask:byte>: set mask
+;     $80,<length:byte>: rest
+;     $90,<pos:word>: unconditional jump
+;     $a0,<index:byte><pos:word>: djnz
+;     $b0,<index:byte><value:byte>: set table value
+;     $c0,<bitmask:byte>: sync channels
+;     $e0: finish
+;     $f0: exit
+;   a sequence has a format of (1) a byte storing the length of the sequence, and (2) a sequence of bytes, (1) long, where any value != 0 is a wavelength to play on the bass channel, and 0 means noise
 
-; noise/bass table:
-;   this can be used to create complex-sounding drum sounds by rapidly switching between noise and notes of varying pitch
-;   at the address pointed to by the word argument of the $00 command, a sequence of bytes is found, where each byte encodes a single frame
-;   this byte can be:
-;     $00 followed by another $00 to signify the end of the sequence
-;     $00 followed by anything else to signify noise (the next byte is ignored)
-;     $01-$ff to signify a wavelength for the bass wave, the wavelength is given using the formula H/880/(2^((M-69)/12)*440)/2, where...
-;               H is the CPU frequency in Hz
-;               M is the MIDI code, where A4 = 69
-;               880 is the number of clock cycles per effective sample
-;               2 signifies the fact that frequency doubles if the octave goes up by one
-;               69 is the MIDI code for the note which has frequency 440 Hz
-;               12 is the number of semitones in an octave
-;               440 is the frequency in Hz of the note with MIDI code 69
-;   the length of the sample is subtracted from the next note, in order to pretend that drums are instantaneous
+; bass channel:
+;   note that the bass channel will be muted if the drum channel is playing, as they're technically played on the same channel
+;   the format is the same as for general-purpose pulse wave channels, except pwm and vibrato/glissando don't work, and only commands $00-$40,$70-$c0,$e0-$f0 work
+;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount (but it may be different for specific notes which can lead to phasing effects); however, for high notes, there should be no aliasing artifacts

@@ -1,0 +1,128 @@
+  ld hl,tunings
+  ld de,general_tuning
+  ld bc,2*12+12
+  ldir
+  jq after_tunings
+
+tunings:
+  dw $73A7,$7A87,$81D1,$8989,$91B6,$9A60,$A38E,$AD48,$B796,$C281,$CE11,$DA52
+  db $8E,$86,$7E,$77,$70,$6A,$64,$BD,$B2,$A8,$9F,$96
+
+
+if 0
+
+measure_cpu:
+  assert driver_ram shr 8 = $c3
+  ld hl,$c303
+  ld [driver_ram + 2044]
+  ld l,$01
+  ld [driver_ram + 2046]
+  ld de,driver_ram + 1
+  ld bc,2043
+  ld [hl],0
+  ldir
+
+  ld a,$c3
+  ld [interrupt_ram],a
+  ld hl,.starttmr
+  ld [interrupt_ram + 1],hl
+  ld a,$46
+  out [$30],a
+  ld a,$03
+  out [$31],a
+  ld a,1
+  out [$32],a
+  ei
+  jq driver_ram
+
+tunings:
+  
+
+.starttmr:
+  ld a,$03
+  out [$31],a
+  ld a,128
+  out [32],a
+  ld bc,0
+  pop hl
+  ld hl,.stoptmr
+  ld [interrupt_ram + 1],hl
+  ei
+  jq driver_ram
+
+.stoptmr:
+  xor a
+  out [$30],a
+  out [$31],a
+
+  pop hl
+  ld a,l
+  cp (driver_ram + 2045) and $00ff
+  jq nz,.not_last_instr
+  ld a,h
+  cp (driver_ram + 2045) shr 8
+  jq nz,.not_last_instr
+  ld hl,4091
+  jq .done_instr
+.not_last_instr:
+  ld de,-driver_ram
+  add hl,de
+  add hl,hl
+.done_instr:
+
+  ld a,c
+  rrca
+  rrca
+  rrca
+  rrca
+  and $f0
+  or h
+  ld h,a
+
+  ld a,c
+  srl b
+  rra
+  srl b
+  rra
+  srl b
+  rra
+  srl b
+  jq nz,speed_out_of_range
+  rra
+
+  ex de,hl
+  ld iyl,a
+  ; now IYLDE is the clock speed
+
+
+  ld [interrupt_ram],sp
+  ld sp,tunings
+
+  exx
+  ld hl,general_tuning + 11
+  ld b,12
+
+.general_loop:
+  exx
+
+  pop bc
+  dec sp
+  pop hl
+
+  iylde_mul_hlc
+
+  exx
+  ld [hl],a
+  dec hl
+  ld a,ixh
+  ld [hl],a
+  dec hl
+  djnz .general_loop
+
+  ld sp,[interrupt_ram]
+
+
+end if
+
+after_tunings:
+

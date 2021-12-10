@@ -249,6 +249,10 @@ general_driver:
   ld [vib_change.addr],hl
   ld a,vib_delay_reset        ;         vib_delay = vib_delay_reset;
   ld [vib_delay.addr],a
+  ld a,_adc                   ;         vib_decr = false;
+  ld [.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [.vib_c_smc],a
   pop hl
 .after_vib_set:               ;       }
 
@@ -648,8 +652,9 @@ drum:
 .read_next_note:              ;   drum_next_note:
   ld a,[hl]                   ;   drum_rest_len = *drum_pointer++;
   inc hl
-  jq z,.parse_command         ;   if (!drum_rest_len) {
-                              ;     ...
+  or a                        ;   if (!drum_rest_len) {
+  jq z,.parse_command
+                              ;     ... (see below)
                               ;   }
   ld [drum_rest_len.addr],a
 
@@ -662,23 +667,21 @@ drum:
   add hl,de                   ;   drum_sequence_pointer = (uint8_t *) read;
   ld a,[hl]                   ;   drum_len = *drum_sequence_pointer++;
   inc hl
-  inc a
-  ld [drum_len.addr],a
-  ld [drum_sequence_pointer.addr],hl
+  jq .new_note
+; inc a
+; ld [drum_len.addr],a
+; ld [drum_sequence_pointer.addr],hl
 
 .not_read_next:               ; }
+  ld [drum_rest_len.addr],a
   ld a,drum_len               ; if (--drum_len) {
   dec a
   jr z,.no_drum
+  ld hl,drum_sequence_pointer
+.new_note:
+  ld [drum_len.addr],a
 
-  ld a,_jrc                   ;   mute_bass = true;
-  ld [bass.smc_mute_c],a
-  ld a,drum_mask + $03
-  and drum_globalmask + $03
-  ld [noisewave.mask],a
-  ld [basswave.mask],a
-  ld hl,drum_sequence_pointer ;   uint8_t read = *drum_sequence_pointer++;
-  ld a,[hl]
+  ld a,[hl]                   ;   uint8_t read = *drum_sequence_pointer++;
   inc hl
   ld [drum_sequence_pointer.addr],hl
   or a                        ;   if (read) {
@@ -688,22 +691,40 @@ drum:
   ld a,basswave and $00ff     ;     noise.playing = false;
   ld [pulsewave3.next],a
 
-  jq bass                     ;   } else {
+  jq .mute_bass               ;   } else {
 
 .play_noise:
   ld a,noisewave and $00ff    ;     noise.playing = true;
   ld [pulsewave3.next],a
-  jq bass                     ;   }
+.mute_bass:                   ;   }
+
+  ld a,_jrc                   ;   mute_bass = true;
+  ld [bass.smc_mute_c],a
+  ld a,drum_mask + $03
+  and drum_globalmask + $03
+  ld [noisewave.mask],a
+  ld [basswave.mask],a
+  jq bass
+
 
 .no_drum:                     ; } else {
+                              ;   drum_len = 1;
+; disable drum driver, give back control over the drumbass channel to bass driver
+; ld [noisewave.mask],a       ;   noise.mask = 0;
+; ^ not actually necessary because the bass channel will take over anyway
+  ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
+  ld [basswave.length],a
+  ld a,[bass_outmask.addr]    ;   bass.mask = bass.out.mask;
+  ld [basswave.mask],a
+  ld a,basswave and $00ff
+  ld [pulsewave3.next],a
   ld a,_jrnc                  ;   mute_bass = false;
   ld [bass.smc_mute_c],a
-                              ;   drum_len = 1;
   jq bass                     ; }
 
-
-.parse_command:
+.parse_command:               ; the ... above goes here
   ld a,[hl]                   ;     switch (*drum_pointer++) {
+  inc hl
   and $f0
   ex de,hl
   ld hl,.read_next_note
@@ -751,6 +772,16 @@ drum:
   ld hl,channels_playing      ;           playing--;
   dec [hl]
   jp z,exit_entrypoint
+
+  ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
+  ld [basswave.length],a
+  ld a,[bass_outmask.addr]    ;   bass.mask = bass.out.mask;
+  ld [basswave.mask],a
+  ld a,basswave and $00ff
+  ld [pulsewave3.next],a
+  ld a,_jrnc                  ;   mute_bass = false;
+  ld [bass.smc_mute_c],a
+
   ld a,$c3
   ld [drum],a
   ld hl,bass
@@ -761,8 +792,9 @@ drum:
 smcable bass_len,bass_len.addr
 smcable bass_rest_len,bass_rest_len.addr
 smcable bass_mask,bass_mask.addr
-smcable bass_totalmask,bass_totalmask.addr
 smcable bass_globalmask,bass_globalmask.addr
+smcable bass_outmask,bass_outmask.addr
+smcable bass_outlen,bass_outlen.addr
 smcable bass_arp_delay,bass_arp_delay.addr
 smcable bass_arp_delay_reset,bass_arp_delay_reset.addr
 smcable bass_pointer,bass_pointer.addr
@@ -779,7 +811,7 @@ bass:
   dec a
   jq nz,.playing
                               ;   bass_len = 1;
-  ld [bass_totalmask.addr],a  ;   bass_totalmask = 0x00;
+  ld [bass_outmask.addr],a    ;   bass.out.mask = 0x00;
   ld a,bass_rest_len + 1      ;   if (!--bass_rest_len) {
   dec a
   jq nz,.rest_finished
@@ -797,8 +829,9 @@ bass:
   ld [bass_arp_delay.addr],a
   ld a,[bass_arp_count_reset.addr] ;  bass_arp_count = bass_arp_count_reset;
   ld [bass_arp_count.addr],a
-  ld a,bass_mask              ;       bass_totalmask = bass_mask;
-  ld [bass_totalmask.addr],a
+  ld a,bass_mask              ;       bass.out.mask = bass_mask & bass_globalmask;
+  and bass_globalmask + $03
+  ld [bass_outmask.addr],a
   add a,l                     ;       bass_pointer += bass_arp_count_reset;
   ld l,a
   adc a,h
@@ -889,15 +922,16 @@ bass:
   inc hl
   ld [bass_arp_current.addr],hl
 
+  decode_note_bass            ;   bass.wavelength = bass_decode_note(bass_arp_current);
+  ld [bass_outlen.addr],a
+
   scf                         ; if (!mute_bass) {
 .smc_mute_c:
   jr nc,.mute_bass
 
-  ld a,bass_totalmask + $03   ;   bass.mask = bass_totalmask & bass_globalmask;
-  and bass_globalmask + $03
+  ld a,bass_outmask + $03     ;   bass.mask = bass.out.mask;
   ld [basswave.mask],a
-
-  decode_note_bass            ;   bass.wavelength = bass_decode_note(bass_arp_current);
+  ld a,bass_outlen            ;   bass.wavelength = bass.out.length;
   ld [basswave.length],a
 
 .mute_bass:
@@ -984,6 +1018,9 @@ bass:
   ld hl,channels_playing      ;           playing--;
   dec [hl]
   jp z,exit_entrypoint
+
+  ld [bass_outmask.addr],a    ;           bass.out.mask = 0;
+
   ld a,$c3
   ld [bass],a
   ld hl,.wait_driver

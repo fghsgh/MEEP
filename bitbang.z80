@@ -194,14 +194,14 @@ bitbang_init_code:
   dec a
   jr nz,.channel_loop
 
-  ld hl,noisewave             ; copy noise wave specific part
+  ld hl,noisewave.source      ; copy noise wave specific part
   ld c,noisewave.size
   ldir
   ld hl,wave_end              ; and the part common to everything
   ld c,wave_end.size
   ldir
 
-  ld hl,basswave              ; same thing for the basswave (pulse wave without controllable pulse width, with wavelength control rather than frequency control)
+  ld hl,basswave.source       ; same thing for the basswave (pulse wave without controllable pulse width, with wavelength control rather than frequency control)
   ld c,basswave.size
   ldir
   ld hl,wave_end
@@ -214,55 +214,56 @@ bitbang_init_code:
   ldir
 end macro
 
-noisewave:
+noisewave.source:
 virtual at $c000 + 4 * pulsewave.size
-noisewave.seed := $ + 1
-  ld hl,$0001
+noisewave:
+smcable .seed_smc,.seed
+smcable .mask_smc,.mask
+  ld hl,.seed_smc + $0001
   add hl,hl
   sbc a,a
   and $2d
   xor l
   ld l,a
-  ld [noisewave.seed],hl
+  ld [.seed],hl
   add a,c
-noisewave.size := $ - $$
-load noisewave.data: noisewave.size from $$
-noisewave.mask := $ + 1
-  and $00
+.size := $ - $$
+load .data: .size from $$
+  and .mask_smc
   ld hl,$c000
   ex af,af'
   exx
   ei
   ret
-noisewave.end := $
+.end := $
 end virtual
-  db noisewave.data
+  db .data
 
-basswave:
+basswave.source:
 virtual at noisewave.end
-basswave.start:
-basswave.state := $ + 1
-  ld hl,$0000
+basswave:
+smcable .state_smc,.state
+smcable .length_smc,.length
+smcable .mask_smc,.mask
+  ld hl,.state_smc
   dec l
   ld a,h
-  jr nz,basswave.end
+  jr nz,.end
   cpl
   ld h,a
-basswave.length := $ + 1
-  ld l,$00
-basswave.end:
-  ld [basswave.state],hl
-basswave.size := $ - $$
-basswave.mask := $ + 1
-  and $00
+  ld l,.length_smc
+.end:
+  ld [.state],hl
+.size := $ - $$
+  and .mask_smc
   ld hl,$c000
   ex af,af'
   exx
   ei
   ret
-load basswave.data: basswave.size from $$
+load .data: .size from $$
 end virtual
-db basswave.data
+db .data
 
 pulsewave:
 virtual at $0000

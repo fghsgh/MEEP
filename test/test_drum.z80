@@ -1,0 +1,32 @@
+include "../z80.inc"
+include "../relocatable.inc"
+include "../tiformat.inc"
+include "../ti83plus.inc"
+format ti executable "A"
+
+include "../ram.z80"
+
+include "init_driver.z80"
+
+song:
+dw ch0,ch1,ch2,ch3,drumstart,bassstart
+
+kick:
+  db 8,0,$2D,$64,$93,$ba,$d9,$f0,$ff
+
+drumstart:
+  db 0,$b0,0,16
+loop:
+  db 25
+  dw kick
+  db 0,$a0,0
+  dw loop
+
+
+  db $00
+ch0:
+ch1:
+ch2:
+ch3:
+bassstart:
+  db $e0

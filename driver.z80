@@ -163,12 +163,13 @@ general_driver:
   dec a
   jq nz,.play_note_normal
                               ;   note_len = 1;
-  ld [pulsewavex.mask],a      ;   channel.mask = 0x00;
   ld a,rest_len + 1           ;   if (!--rest_len) {
   dec a
   jq z,.rest_done
 
   ld [rest_len.addr],a
+  xor a
+  ld [pulsewavex.mask],a      ;   channel.mask = 0x00;
   jq ch_driver.next
 
 .rest_done:

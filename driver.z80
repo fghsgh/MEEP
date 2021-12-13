@@ -95,6 +95,9 @@ driver_init_c:
   ld [hl],a
   inc l
   jq nz,.zero_counters_loop
+
+  ld a,6
+  ld [channels_playing],a
 end macro
 
 relocate_a.table:

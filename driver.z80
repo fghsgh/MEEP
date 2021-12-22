@@ -13,6 +13,15 @@ driver_init_c:
   ld de,driver_ram            ; DE holds the current pointer address
 
 .loop:
+  ld a,ixl
+  cp 2
+  jq nz,.not_middle_insert_drum
+
+  ld hl,drumbass
+  ld bc,drumbass.size
+  ldir
+.not_middle_insert_drum:
+
   push de                     ; DE will be destroyed
 
   ld hl,ch_driver
@@ -83,9 +92,8 @@ driver_init_c:
   jq nz,.loop
 
 
-  ld hl,drumbass
-  ld de,driver_ram + 4 * ch_driver.size
-  ld bc,drumbass.size
+  ld hl,drumlcd
+  ld bc,drumlcd.size
   ldir
 
 
@@ -637,161 +645,10 @@ repeat 1,x:ch_driver.size
 end repeat
 
 drumbass:
-virtual at driver_ram + 4 * ch_driver.size
+virtual at driver_ram + 2 * ch_driver.size
 
-smcable drum_rest_len,drum_rest_len.addr
-smcable drum_mask,drum_mask.addr
-smcable drum_globalmask,drum_globalmask.addr
-smcable drum_pointer,drum_pointer.addr
-smcable drum_len,drum_len.addr
-smcable drum_sequence_pointer,drum_sequence_pointer.addr
-
-drum:
-
-  ld a,drum_rest_len + 1      ; if (!--drum_rest_len) {
-  dec a
-  jq nz,.not_read_next
-
-  ld hl,drum_pointer
-.read_next_note:              ;   drum_next_note:
-  ld a,[hl]                   ;   drum_rest_len = *drum_pointer++;
-  inc hl
-  or a                        ;   if (!drum_rest_len) {
-  jq z,.parse_command
-                              ;     ... (see below)
-                              ;   }
-  ld [drum_rest_len.addr],a
-
-  ld e,[hl]                   ;   uint16_t read = *drum_pointer++;
-  inc hl
-  ld d,[hl]                   ;   read |= *drum_pointer++ << 8;
-  inc hl
-  ld [drum_pointer.addr],hl
-  ld hl,[appvar_start]        ;   read += appvar_start;
-  add hl,de                   ;   drum_sequence_pointer = (uint8_t *) read;
-  ld a,[hl]                   ;   drum_len = *drum_sequence_pointer++;
-  inc hl
-  jq .new_note
-; inc a
-; ld [drum_len.addr],a
-; ld [drum_sequence_pointer.addr],hl
-
-.not_read_next:               ; }
-  ld [drum_rest_len.addr],a
-  ld a,drum_len               ; if (--drum_len) {
-  dec a
-  jr z,.no_drum
-  ld hl,drum_sequence_pointer
-.new_note:
-  ld [drum_len.addr],a
-
-  ld a,[hl]                   ;   uint8_t read = *drum_sequence_pointer++;
-  inc hl
-  ld [drum_sequence_pointer.addr],hl
-  or a                        ;   if (read) {
-  jq z,.play_noise
-
-  ld [basswave.length],a      ;     bass.wavelength = read;
-  ld a,basswave and $00ff     ;     noise.playing = false;
-  ld [pulsewave3.next],a
-
-  jq .mute_bass               ;   } else {
-
-.play_noise:
-  ld a,noisewave and $00ff    ;     noise.playing = true;
-  ld [pulsewave3.next],a
-.mute_bass:                   ;   }
-
-  ld a,_jrc                   ;   mute_bass = true;
-  ld [bass.smc_mute_c],a
-  ld a,drum_mask + $03
-  and drum_globalmask + $03
-  ld [noisewave.mask],a
-  ld [basswave.mask],a
-  jq bass
-
-
-.no_drum:                     ; } else {
-                              ;   drum_len = 1;
-; disable drum driver, give back control over the drumbass channel to bass driver
-; ld [noisewave.mask],a       ;   noise.mask = 0;
-; ^ not actually necessary because the bass channel will take over anyway
-  ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
-  ld [basswave.length],a
-  ld a,[bass_outmask.addr]    ;   bass.mask = bass.out.mask;
-  ld [basswave.mask],a
-  ld a,basswave and $00ff
-  ld [pulsewave3.next],a
-  ld a,_jrnc                  ;   mute_bass = false;
-  ld [bass.smc_mute_c],a
-  jq bass                     ; }
-
-.parse_command:               ; the ... above goes here
-  ld a,[hl]                   ;     switch (*drum_pointer++) {
-  inc hl
-  and $f0
-  ex de,hl
-  ld hl,.read_next_note
-  push hl
-  rrca
-  rrca
-  rrca
-  ld hl,.switch_cases
-  add a,l
-  ld l,a
-  adc a,h
-  sub l
-  ld h,a
-
-  ld a,[hl]
-  inc hl
-  ld h,[hl]
-  ld l,a
-  xor a
-  jp hl
-
-.switch_cases:
-  dw cmd_nothing,.cmd_mask,cmd_nothing,cmd_nothing
-  dw cmd_nothing,cmd_nothing,cmd_nothing,cmd_nothing
-  dw .cmd_rest,cmd_jump,cmd_djnz,cmd_table_value
-  dw cmd_set_phase,cmd_nothing,.cmd_finish,cmd_exit
-
-.cmd_mask:                    ;         case 0x10:
-  ex de,hl
-  ld a,[hl]                   ;           mask = *drum_pointer++;
-  inc hl
-  ld [drum_mask.addr],a
-  ret                         ;           break;
-
-.cmd_rest:                    ;         case 0x80:
-  ex de,hl
-  ld a,[hl]                   ;           drum_rest_len = *drum_pointer++ + 1;
-  inc hl
-  inc a
-  ld [drum_rest_len.addr],a
-  ret                         ;           break;
-
-.cmd_finish:                  ;         case 0xe0:
-  pop hl
-  ld hl,channels_playing      ;           playing--;
-  dec [hl]
-  jp z,exit_entrypoint
-
-  ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
-  ld [basswave.length],a
-  ld a,[bass_outmask.addr]    ;   bass.mask = bass.out.mask;
-  ld [basswave.mask],a
-  ld a,basswave and $00ff
-  ld [pulsewave3.next],a
-  ld a,_jrnc                  ;   mute_bass = false;
-  ld [bass.smc_mute_c],a
-
-  ld a,$c3
-  ld [drum],a
-  ld hl,bass
-  ld [drum + 1],hl
-; jp hl                       ;           return;
-; bass is immediately following
+  call drum
+  call wait_frame
 
 smcable bass_len,bass_len.addr
 smcable bass_rest_len,bass_rest_len.addr
@@ -931,26 +788,13 @@ bass:
 
   scf                         ; if (!mute_bass) {
 .smc_mute_c:
-  jr nc,.mute_bass
+  jq nc,.mute_bass
 
   ld a,bass_outmask + $03     ;   bass.mask = bass.out.mask;
   ld [basswave.mask],a
   ld a,bass_outlen            ;   bass.wavelength = bass.out.length;
   ld [basswave.length],a
-
-.mute_bass:
-
-
-.wait_driver:
-  in a,[$04]
-  and $40
-  jr z,.wait_driver
-  ld a,$01
-  out [$34],a
-  in a,[$04]
-  and $08
-  ret z
-  jq driver_ram
+  jq .finish_bass
 
 
 .parse_command:
@@ -1032,11 +876,197 @@ bass:
   jp hl                       ;           return;
 
 
+.mute_bass:
+.finish_bass:
 
   drumbass.size := $ - $$
   load drumbass.data: drumbass.size from $$
 end virtual
 db drumbass.data
+
+drumlcd:
+virtual at driver_ram + 4 * ch_driver.size + drumbass.size
+
+  call drum
+
+lcd:
+; TODO
+
+  call wait_frame
+  jq driver_ram
+
+
+
+wait_frame:
+  in a,[$04]
+  and $40
+  jr z,.wait_driver
+  ld a,$01
+  out [$34],a
+  in a,[$04]
+  and $08
+  ret nz
+  pop af
+  ret
+
+smcable drum_rest_len,drum_rest_len.addr
+smcable drum_mask,drum_mask.addr
+smcable drum_globalmask,drum_globalmask.addr
+smcable drum_pointer,drum_pointer.addr
+smcable drum_len,drum_len.addr
+smcable drum_sequence_pointer,drum_sequence_pointer.addr
+
+drum:
+  ld a,drum_rest_len + 1      ; if (!--drum_rest_len) {
+  dec a
+  jq nz,.not_read_next
+
+  ld hl,drum_pointer
+.read_next_note:              ;   drum_next_note:
+  ld a,[hl]                   ;   drum_rest_len = *drum_pointer++;
+  inc hl
+  or a                        ;   if (!drum_rest_len) {
+  jq z,.parse_command
+                              ;     ... (see below)
+                              ;   }
+  ld [drum_rest_len.addr],a
+
+  ld e,[hl]                   ;   uint16_t read = *drum_pointer++;
+  inc hl
+  ld d,[hl]                   ;   read |= *drum_pointer++ << 8;
+  inc hl
+  ld [drum_pointer.addr],hl
+  ld hl,[appvar_start]        ;   read += appvar_start;
+  add hl,de                   ;   drum_sequence_pointer = (uint8_t *) read;
+  ld a,[hl]                   ;   drum_len = *drum_sequence_pointer++;
+  inc hl
+  jq .new_note
+; inc a
+; ld [drum_len.addr],a
+; ld [drum_sequence_pointer.addr],hl
+
+.not_read_next:               ; }
+  ld [drum_rest_len.addr],a
+  ld a,drum_len               ; if (--drum_len) {
+  dec a
+  jr z,.no_drum
+  ld hl,drum_sequence_pointer
+.new_note:
+  ld [drum_len.addr],a
+
+  ld a,[hl]                   ;   uint8_t read = *drum_sequence_pointer++;
+  inc hl
+  ld [drum_sequence_pointer.addr],hl
+  or a                        ;   if (read) {
+  jq z,.play_noise
+
+  ld [basswave.length],a      ;     bass.wavelength = read;
+  ld a,basswave and $00ff     ;     noise.playing = false;
+  ld [pulsewave3.next],a
+
+  jq .mute_bass               ;   } else {
+
+.play_noise:
+  ld a,noisewave and $00ff    ;     noise.playing = true;
+  ld [pulsewave3.next],a
+.mute_bass:                   ;   }
+
+  ld a,_jrc                   ;   mute_bass = true;
+  ld [bass.smc_mute_c],a
+  ld a,drum_mask + $03
+  and drum_globalmask + $03
+  ld [noisewave.mask],a
+  ld [basswave.mask],a
+  jq bass
+
+
+.no_drum:                     ; } else {
+                              ;   drum_len = 1;
+; disable drum driver, give back control over the drumbass channel to bass driver
+; ld [noisewave.mask],a       ;   noise.mask = 0;
+; ^ not actually necessary because the bass channel will take over anyway
+  ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
+  ld [basswave.length],a
+  ld a,[bass_outmask.addr]    ;   bass.mask = bass.out.mask;
+  ld [basswave.mask],a
+  ld a,basswave and $00ff
+  ld [pulsewave3.next],a
+  ld a,_jrnc                  ;   mute_bass = false;
+  ld [bass.smc_mute_c],a
+  jq bass                     ; }
+
+.parse_command:               ; the ... above goes here
+  ld a,[hl]                   ;     switch (*drum_pointer++) {
+  inc hl
+  and $f0
+  ex de,hl
+  ld hl,.read_next_note
+  push hl
+  rrca
+  rrca
+  rrca
+  ld hl,.switch_cases
+  add a,l
+  ld l,a
+  adc a,h
+  sub l
+  ld h,a
+
+  ld a,[hl]
+  inc hl
+  ld h,[hl]
+  ld l,a
+  xor a
+  jp hl
+
+.switch_cases:
+  dw cmd_nothing,.cmd_mask,cmd_nothing,cmd_nothing
+  dw cmd_nothing,cmd_nothing,cmd_nothing,cmd_nothing
+  dw .cmd_rest,cmd_jump,cmd_djnz,cmd_table_value
+  dw cmd_set_phase,cmd_nothing,.cmd_finish,cmd_exit_extra_pop
+
+.cmd_mask:                    ;         case 0x10:
+  ex de,hl
+  ld a,[hl]                   ;           mask = *drum_pointer++;
+  inc hl
+  ld [drum_mask.addr],a
+  ret                         ;           break;
+
+.cmd_rest:                    ;         case 0x80:
+  ex de,hl
+  ld a,[hl]                   ;           drum_rest_len = *drum_pointer++ + 1;
+  inc hl
+  inc a
+  ld [drum_rest_len.addr],a
+  ret                         ;           break;
+
+.cmd_finish:                  ;         case 0xe0:
+  pop hl
+  pop hl
+  ld hl,channels_playing      ;           playing--;
+  dec [hl]
+  jp z,exit_entrypoint
+
+  ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
+  ld [basswave.length],a
+  ld a,[bass_outmask.addr]    ;   bass.mask = bass.out.mask;
+  ld [basswave.mask],a
+  ld a,basswave and $00ff
+  ld [pulsewave3.next],a
+  ld a,_jrnc                  ;   mute_bass = false;
+  ld [bass.smc_mute_c],a
+
+  ld a,$c3
+  ld [drum],a
+  ld hl,bass
+  ld [drum + 1],hl
+  jp hl
+
+drumlcd.size := $ - $$
+load drumlcd.data: drumlcd.size from $$
+end virtual
+db drumlcd.data
+
 
 cmd_jump:                     ;         case 0x90:
   ex de,hl
@@ -1112,6 +1142,8 @@ cmd_set_phase:                ;         case 0xc0:
 cmd_nothing:                  ;         default:
   ret                         ;           break;
 
+cmd_exit_extra_pop:
+  pop hl
 cmd_exit:                     ;         case 0xf0:
   pop hl
 exit_entrypoint:

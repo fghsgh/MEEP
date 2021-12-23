@@ -427,6 +427,7 @@ general_driver:
   ret                         ;           break;
 
 .cmd_rest:                    ;         case 0x80:
+  ld [pulsewavex.mask],a      ;           channel.mask = 0;
   ex de,hl
   ld a,[hl]                   ;           rest_len = *channel_pointer++ + 1;
   inc hl
@@ -437,6 +438,7 @@ general_driver:
   jq ch_driver.next           ;           break;
 
 .cmd_finish:                  ;         case 0xe0:
+  ld [pulsewavex.mask],a      ;           channel.mask = 0;
   pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]
@@ -673,10 +675,11 @@ bass:
   dec a
   jq nz,.playing
                               ;   bass_len = 1;
-  ld [bass_outmask.addr],a    ;   bass.out.mask = 0x00;
   ld a,bass_rest_len + 1      ;   if (!--bass_rest_len) {
   dec a
-  jq nz,.rest_finished
+  jq z,.read_next_note
+  ld [bass_outmask.addr],a    ;   (else) bass.out.mask = 0x00;
+  jq .resting
 
 .read_next_note:
   ld hl,bass_pointer          ;     if (*bass_pointer & 0x0f) {
@@ -757,7 +760,7 @@ bass:
                               ;     } else {
                               ;       (later)
 .done_read:                   ;     }
-.rest_finished:               ;   }
+                              ;   }
 .playing:                     ; }
   ld a,bass_arp_delay + 1     ; if (!--bass_arp_delay) {
   dec a
@@ -787,14 +790,15 @@ bass:
   decode_note_bass            ;   bass.wavelength = bass_decode_note(bass_arp_current);
   ld [bass_outlen.addr],a
 
+.resting:
   scf                         ; if (!mute_bass) {
 .smc_mute_c:
   jq nc,.mute_bass
 
-  ld a,bass_outmask + $03     ;   bass.mask = bass.out.mask;
-  ld [basswave.mask],a
   ld a,bass_outlen            ;   bass.wavelength = bass.out.length;
   ld [basswave.length],a
+  ld a,bass_outmask + $03     ;   bass.mask = bass.out.mask;
+  ld [basswave.mask],a
   jq .finish_bass
 
 
@@ -855,6 +859,7 @@ bass:
   ret                         ;           break;
 
 .cmd_rest:                    ;         case 0x80:
+  ld [bass_outmask.addr],a    ;           bass.out.mask = 0;
   ex de,hl
   ld a,[hl]                   ;           bass_rest_len = *bass_pointer++ + 1;
   inc hl

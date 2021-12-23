@@ -879,7 +879,7 @@ bass:
   ld [bass],a
   ld hl,.finish_bass
   ld [bass + 1],hl
-  jp hl                       ;           return;
+; jp hl                       ;           return;
 
 
 .mute_bass:
@@ -1049,6 +1049,7 @@ drum:
   ret                         ;           break;
 
 .cmd_finish:                  ;         case 0xe0:
+  pop hl
   pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]

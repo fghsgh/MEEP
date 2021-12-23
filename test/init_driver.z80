@@ -136,15 +136,15 @@ done:
 
 
 repeated_init.sp_data:
-  dw global_mask.addr - relocate_a + 3 * ch_driver.size + driver_ram
-  dw global_mask.addr - relocate_a + 2 * ch_driver.size + driver_ram
+  dw global_mask.addr - relocate_a + 3 * ch_driver.size + driver_ram + drumbass.size
+  dw global_mask.addr - relocate_a + 2 * ch_driver.size + driver_ram + drumbass.size
   dw global_mask.addr - relocate_a + 1 * ch_driver.size + driver_ram
   dw global_mask.addr - relocate_a + 0 * ch_driver.size + driver_ram
 
   dw channel_pointer.addr - relocate_a + 0 * ch_driver.size + driver_ram
   dw channel_pointer.addr - relocate_a + 1 * ch_driver.size + driver_ram
-  dw channel_pointer.addr - relocate_a + 2 * ch_driver.size + driver_ram
-  dw channel_pointer.addr - relocate_a + 3 * ch_driver.size + driver_ram
+  dw channel_pointer.addr - relocate_a + 2 * ch_driver.size + driver_ram + drumbass.size
+  dw channel_pointer.addr - relocate_a + 3 * ch_driver.size + driver_ram + drumbass.size
   dw drum_pointer.addr
   dw bass_pointer.addr
 

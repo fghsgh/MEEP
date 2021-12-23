@@ -645,10 +645,11 @@ repeat 1,x:ch_driver.size
 end repeat
 
 drumbass:
+db drumbass.data
 virtual at driver_ram + 2 * ch_driver.size
 
+call_drum_1:
   call drum
-  call wait_frame
 
 smcable bass_len,bass_len.addr
 smcable bass_rest_len,bass_rest_len.addr
@@ -871,22 +872,24 @@ bass:
 
   ld a,$c3
   ld [bass],a
-  ld hl,.wait_driver
+  ld hl,.finish_bass
   ld [bass + 1],hl
   jp hl                       ;           return;
 
 
 .mute_bass:
 .finish_bass:
+  call wait_frame
 
   drumbass.size := $ - $$
   load drumbass.data: drumbass.size from $$
 end virtual
-db drumbass.data
 
 drumlcd:
+db drumlcd.data
 virtual at driver_ram + 4 * ch_driver.size + drumbass.size
 
+call_drum_2:
   call drum
 
 lcd:
@@ -900,7 +903,7 @@ lcd:
 wait_frame:
   in a,[$04]
   and $40
-  jr z,.wait_driver
+  jr z,wait_frame
   ld a,$01
   out [$34],a
   in a,[$04]
@@ -977,7 +980,7 @@ drum:
   and drum_globalmask + $03
   ld [noisewave.mask],a
   ld [basswave.mask],a
-  jq bass
+  ret
 
 
 .no_drum:                     ; } else {
@@ -993,7 +996,7 @@ drum:
   ld [pulsewave3.next],a
   ld a,_jrnc                  ;   mute_bass = false;
   ld [bass.smc_mute_c],a
-  jq bass                     ; }
+  ret                         ; }
 
 .parse_command:               ; the ... above goes here
   ld a,[hl]                   ;     switch (*drum_pointer++) {
@@ -1042,7 +1045,6 @@ drum:
 
 .cmd_finish:                  ;         case 0xe0:
   pop hl
-  pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]
   jp z,exit_entrypoint
@@ -1056,16 +1058,14 @@ drum:
   ld a,_jrnc                  ;   mute_bass = false;
   ld [bass.smc_mute_c],a
 
-  ld a,$c3
-  ld [drum],a
-  ld hl,bass
-  ld [drum + 1],hl
-  jp hl
+  ld a,$21
+  ld [call_drum_1],a
+  ld [call_drum_2],a
+  ret
 
 drumlcd.size := $ - $$
 load drumlcd.data: drumlcd.size from $$
 end virtual
-db drumlcd.data
 
 
 cmd_jump:                     ;         case 0x90:

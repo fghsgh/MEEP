@@ -1,2 +1,2 @@
-*.z80 linguist-language=Z80 assembly
+*.z80 linguist-language=Z80-assembly
 *.inc linguist-language=fasmg

@@ -100,7 +100,8 @@ repeated_init:                ; this is the part that has to be redone every tim
   out [$33],a
   ld a,$01 ; loop
   out [$34],a
-  ld a,218 ; 32768 / 3 / 218 = 50.1 Hz
+; ld a,218 ; 32768 / 3 / 218 = 50.1 Hz
+  ld a,109 ; 100 Hz now because we're splitting it up
   out [$35],a
 
   ld a,$80 ; 1 cc             ; 176cc -> timer 1

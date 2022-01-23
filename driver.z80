@@ -198,9 +198,11 @@ general_driver:
   ld a,pw_start + $80         ;       if (pw_start)
   or a
   jq z,.no_set_pw_start
-  ld e,0                      ;         pw_state = pw_start << 8;
-  ld d,a
-  ld [pw_state.addr],de
+  ld [pulsewavex.width],a
+  ex de,hl
+  ld l,0                      ;         pw_state = pw_start << 8;
+  ld h,a
+  ld [pw_state.addr],hl
 
   ld a,[.pw_nc_smc]           ;       if (pw_decr) {
   cp _jrnc
@@ -216,14 +218,17 @@ general_driver:
   xor _jrc xor _jrnc
   ld [.pw_c_smc],a
 
-  ex de,hl
-  ld hl,0
-  ld bc,[pw_change.addr]
-  sbc hl,bc
+  ld hl,[pw_change.addr]
+  xor a
+  sub l
+  ld l,a
+  sbc a,a
+  sub h
+  ld h,a
   ld [pw_change.addr],hl
-  ex de,hl
 
 .not_pw_decr:                 ;       }
+  ex de,hl
 .no_set_pw_start:
 
   ld a,[.do_arp_jr_nc_smc]    ;       if (do_arp) {
@@ -233,12 +238,13 @@ general_driver:
   ld d,a
   ld [arp_start.addr],hl      ;         arp_start = arp_current = channel_pointer;
   ld [arp_current.addr],hl
-  ld a,[arp_delay_reset.addr] ;         arp_delay = arp_delay_reset;
-  ld [arp_delay.addr],a
+  ld a,1                      ;         arp_delay = 1;
+  ld [arp_delay.addr],a ; make it read a new note immediately
   ld a,[arp_count_reset.addr] ;         arp_count = arp_count_reset;
   ld [arp_count.addr],a
   ld e,a                      ;         channel_pointer += arp_count_reset;
   add hl,de
+  ld a,1
 
   jq .after_vib_set           ;       } else {
 .not_arp_set:
@@ -490,9 +496,12 @@ general_driver:
   sub h
   ld d,a
 
-  ld hl,0
-  or a
-  sbc hl,bc
+  xor a
+  sub c
+  ld l,a
+  sbc a,b
+  sub l
+  ld h,a
   ld [pw_change.addr],hl
   ex de,hl
 
@@ -512,7 +521,7 @@ general_driver:
 ; smc between JR NC and JR C to choose arp or vib
 .do_arp_jr_nc_smc:
   jr c,.do_vib                ; if (do_arp) {
-  ld a,arp_delay + 1          ;   if (!--arp_delay) {
+  ld a,arp_delay              ;   if (!--arp_delay) {
   dec a
   jq nz,.arp_delayed
 

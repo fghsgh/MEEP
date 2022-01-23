@@ -51,6 +51,7 @@ format ti appvar
 ;    this command also enables vibrato (and hence disables arpeggio)
 ;  $70: set arpeggio
 ;    1 byte = the number of notes in all following arpeggios ($00 has undefined behavior)
+;    1 byte = the number of frames per note
 ;    this command also enables arpeggio (and hence disables vibrato)
 ;  $80: rest (do not play anything for a set number of frames)
 ;    1 byte = number of frames to rest

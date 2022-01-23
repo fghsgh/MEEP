@@ -165,6 +165,10 @@ load _jrc:1 from $-2
   jr nc,$
 load _jrnc:1 from $-2
 assert _adc xor _jrnc = _sbc xor _jrc
+  ld hl,0
+load _ldhl:1 from $-3
+  jp 0
+load _jp:1 from $-3
 end virtual
 
 ch_driver.start:
@@ -443,7 +447,7 @@ general_driver:
   ld hl,channels_playing      ;           playing--;
   dec [hl]
   jp z,exit_entrypoint
-  ld a,$c3
+  ld a,_jp
   ld [general_driver],a
   ld hl,ch_driver.next
   ld [general_driver + 1],hl
@@ -797,7 +801,7 @@ bass:
 
   ld a,bass_outlen            ;   bass.wavelength = bass.out.length;
   ld [basswave.length],a
-  ld a,bass_outmask + $03     ;   bass.mask = bass.out.mask;
+  ld a,bass_outmask           ;   bass.mask = bass.out.mask;
   ld [basswave.mask],a
   jq .finish_bass
 
@@ -875,7 +879,7 @@ bass:
 
   ld [bass_outmask.addr],a    ;           bass.out.mask = 0;
 
-  ld a,$c3
+  ld a,_jp
   ld [bass],a
   ld hl,.finish_bass
   ld [bass + 1],hl
@@ -1050,7 +1054,6 @@ drum:
 
 .cmd_finish:                  ;         case 0xe0:
   pop hl
-  pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]
   jp z,exit_entrypoint
@@ -1064,7 +1067,7 @@ drum:
   ld a,_jrnc                  ;   mute_bass = false;
   ld [bass.smc_mute_c],a
 
-  ld a,$21
+  ld a,_ldhl
   ld [call_drum_1],a
   ld [call_drum_2],a
   ret

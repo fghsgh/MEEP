@@ -4,7 +4,7 @@
   out [$05],a
   ld hl,$8000
   ld de,ram2_safe
-  ld bc,$ffff - ram2_safe
+  ld bc,-ram2_safe
   ldir
 
   ld a,4                      ; set last 256 bytes of bank 3 to page 0
@@ -156,7 +156,7 @@ after8000:
   out [$05],a
   ld hl,ram2_safe
   ld de,$8000
-  ld bc,$ffff - ram2_safe
+  ld bc,-ram2_safe
   ldir
 
   xor a                       ; reset: linkport, keypad, bank 3, speed, stack remap, timer 1, timer 2

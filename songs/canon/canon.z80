@@ -40,7 +40,7 @@ ch1:
   db $80,192
   db $80,192
 
-; db $60,12,15,90 ; vibrato (is broken)
+  db $60,24,2,1 ; vibrato
   db $40,$c0 ; length
 
 ; 3

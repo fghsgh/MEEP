@@ -1,7 +1,7 @@
-include "../../z80.inc"
+include "../z80.inc"
 include "../relocatable.inc"
-include "../../tiformat.inc"
-include "../../ti83plusg_.inc"
+include "../tiformat.inc"
+include "../ti83plus.inc"
 format ti executable "A"
 
 include "../ram.z80"

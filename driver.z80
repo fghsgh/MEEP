@@ -169,6 +169,10 @@ assert _adc xor _jrnc = _sbc xor _jrc
 load _ldhl:1 from $-3
   jp 0
 load _jp:1 from $-3
+  jr $
+load _jr:1 from $-2
+  cp 0
+load _cp:1 from $-2
 end virtual
 
 ch_driver.start:
@@ -231,8 +235,8 @@ general_driver:
   ex de,hl
 .no_set_pw_start:
 
-  ld a,[.do_arp_jr_nc_smc]    ;       if (do_arp) {
-  sub _jrc
+  ld a,[.do_arp_jr_smc]    ;       if (do_arp) {
+  sub _cp
   jq nz,.not_arp_set
 
   ld d,a
@@ -369,8 +373,8 @@ general_driver:
   call decode_note
   ld [vib_other_bound.addr],hl
   ld [vib_state.addr],hl      ;           vib_state = vib_other_bound;
-  ld a,_jrnc                  ;           do_arp = false;
-  ld [.do_arp_jr_nc_smc],a
+  ld a,_jr                    ;           do_arp = false;
+  ld [.do_arp_jr_smc],a
   ld a,[de]                   ;           vib_now_bound = decode_note(*channel_pointer++);
   inc de
 ; push de ; channel_pointer
@@ -410,8 +414,8 @@ general_driver:
 
 .cmd_vibrato:                 ;         case 0x60:
   ex de,hl
-  ld a,_jrnc                  ;           do_arp = false;
-  ld [.do_arp_jr_nc_smc],a
+  ld a,_jr                    ;           do_arp = false;
+  ld [.do_arp_jr_smc],a
   ld a,[hl]                   ;           vib_delay_reset = *channel_pointer++ + 1;
   inc hl
   inc a
@@ -426,8 +430,8 @@ general_driver:
 
 .cmd_arpeggio:                ;         case 0x70:
   ex de,hl
-  ld a,_jrc                   ;           do_arp = true;
-  ld [.do_arp_jr_nc_smc],a
+  ld a,_cp                    ;           do_arp = true;
+  ld [.do_arp_jr_smc],a
   ld a,[hl]                   ;           arp_count_reset = *channel_pointer++;
   inc hl
   ld [arp_count_reset.addr],a
@@ -514,13 +518,9 @@ general_driver:
   ld a,h                      ; channel.pw = pw_state >> 8;
   ld [pulsewavex.width],a
 
-; after this, always NC
-; EXCEPT if the JR NC above was SMC'd with a JR C (which happens) (and was causing a bug), hence this OR A
-; there is probably a way to optimize this but I'm drained enough already
-  or a
-; smc between JR NC and JR C to choose arp or vib
-.do_arp_jr_nc_smc:
-  jr c,.do_vib                ; if (do_arp) {
+; smc between JR and CP to choose arp or vib
+.do_arp_jr_smc:
+  cp .do_vib - ($ + 2)        ; if (do_arp) {
   ld a,arp_delay              ;   if (!--arp_delay) {
   dec a
   jq nz,.arp_delayed

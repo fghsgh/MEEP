@@ -9,11 +9,11 @@
 
   ld a,4                      ; set last 256 bytes of bank 3 to page 0
   out [$27],a
-  ld a,1
-  out [$05],a                 ; set remainder of bank 3 to page 1
-  out [$20],a                 ; set fast mode
   xor a                       ; kill all interrupt sources
   out [$03],a
+  inc a
+  out [$05],a                 ; set remainder of bank 3 to page 1
+  out [$20],a                 ; set fast mode
   jp start                    ; jump to this program in bank 3
   org $4000 + $
 start:

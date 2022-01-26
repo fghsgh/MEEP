@@ -40,7 +40,7 @@ ch1:
   db $80,192
   db $80,192
 
-  db $60,24,2,1 ; vibrato
+  db $60,18,2,1 ; vibrato
   db $00,$80,$74,$8a ; pwm
   dw 512
   db $30,6 ; subtractive 6
@@ -89,7 +89,7 @@ ch1:
   db $b4,$74,48
   db $94,$64,48
 
-  db $60,24,2,1 ; vibrato
+  db $60,18,2,1 ; vibrato
   db $70,1,0 ; disable arp
   db $00,$00,$30,$d0 ; pwm
   dw $355
@@ -507,6 +507,7 @@ ch1:
   db $94,12
   db $94,12
 ; 39
+  db $30,6 ; subtractive 6
   db $00,$80,$80,$80 ; disable pwm
   dw 0
   db $94,72

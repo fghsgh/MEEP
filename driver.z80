@@ -456,7 +456,7 @@ general_driver:
   pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]
-  jp z,exit_entrypoint
+  ret z
   ld a,_jp
   ld [general_driver],a
   ld hl,ch_driver.next
@@ -884,7 +884,7 @@ bass:
   pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]
-  jp z,exit_entrypoint
+  ret z
 
   ld [bass_outmask.addr],a    ;           bass.out.mask = 0;
 
@@ -1065,7 +1065,10 @@ drum:
   pop hl
   ld hl,channels_playing      ;           playing--;
   dec [hl]
-  jp z,exit_entrypoint
+  jq nz,.finish_no_exit
+  pop hl
+  ret
+.finish_no_exit:
 
   ld a,[bass_outlen.addr]     ;   bass.wavelength = bass.out.length;
   ld [basswave.length],a
@@ -1164,5 +1167,4 @@ cmd_exit_extra_pop:
   pop hl
 cmd_exit:                     ;         case 0xf0:
   pop hl
-exit_entrypoint:
   ret

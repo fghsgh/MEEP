@@ -92,18 +92,41 @@ end repeat
   ret
 
 
-; A * DE -> AHL
-a_mul_de:
-  ld b,$08
-  ld hl,0
+; inputs:
+;  A: diff
+;  HL: base freq
+; outputs:
+;  DE: A * HL >> 5
+; destroys:
+;  AF, BC=0, HL
+calc_vib_diff:
+  ex de,hl
+  ld bc,$0800
+  ld l,c
+  ld h,c
 
 .loop:
   add hl,hl
   rla
   jr nc,.not_add
   add hl,de
+  adc a,c
 .not_add:
   djnz .loop
+
+  add hl,hl
+  rla
+  add hl,hl
+  rla
+  add hl,hl
+  rla
+  ld e,h
+  ld d,a
+  sla l
+  ret nc
+  inc de
+  ret
+
 
 
 ;hl_div_c:

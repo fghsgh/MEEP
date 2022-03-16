@@ -8,7 +8,7 @@ format ti appvar
   db "fghbeep2" ; magic number
 
   org $0000 ; jump offsets are calculated at runtime because position inside memory is unpredictable
-  dw ch0,ch1,ch2,ch3,drumbass ; pointers to the start of all channels
+  dw ch0,ch1,ch2,ch3,drum,bass ; pointers to the start of all channels
 
 ; general-purpose pulsewave channels:
 ; note: $XY,L where L is the note length, Y is the (standard MIDI) octave (X >= 1) and X is the note (0 -> C, B -> B), notes higher than B are undefined but could be set to up to 16-TET with few modifications to the source
@@ -37,22 +37,24 @@ format ti appvar
 ;               note length will be rounded down and rest length will be rounded up
 ;  $50: set glide
 ;    1 byte = first note, in format $XY as always
-;    1 byte = target note, in format $XY as always
+;    1 byte = target note, in format $XY as well
 ;    1 byte = length in frames
-;               the glide will overwrite vibrato settings, and enable vibrato (and thus disable arpeggio), be sure to reset it afterwards or else every next note will also be a glide
-;               this is because the vibrato code is repurposed for the glide, but detecting each time whether a glide happened and restoring the vibrato state afterwards may not even be preferrable, and would be slow, in any case
+;               the glide will overwrite vibrato settings, and enable vibrato (and thus disable arpeggio), so be sure to restore it afterwards or else every next note will also be a glide
+;               this is because the vibrato code is repurposed for the glide, and I didn't feel like writing code to restore the arpeggio/vibrato settings after finishing a glide
 ;  $60: set vibrato properties
-;    1 byte = vibrato delay, in frames (how long the note must have been playing before vibrato takes effect), default $00
-;    1 byte = how much the frequency of the playing note can differ from its standard frequency, in 1/512ths of the central frequency, relative, default $00 (both up and down)
-;               for example, (2^(1/12)-1)*512 (approximately 30), will result in a vibrato of one semitone up & down
-;               unlike with pulse width ramping, carry is NOT handled when oscillating the frequency, because frequencies are expected to fall in a "sane" range
-;    1 byte = value added to / subtracted from frequency each frame while vibrato is active, in 1/512ths of the standard frequency, default $00
-;               this divided by the previous byte is the number of frames per half oscillation
-;    this command also enables vibrato (and hence disables arpeggio)
+;    1 byte = vibrato delay, in frames (how long the note must have been playing before vibrato takes effect)
+;    1 byte = how much the frequency of the playing note can differ from its standard frequency
+;               the scaling on this is such that 2048 is one octave up and one octave down (of course, 1024 is out of range)
+;               hence, (2^(1/12)-1)*2048, which is approximately 122, will result in one semitone up&down
+;               unlike with pulse width modulation, carry is NOT handled when oscillating the frequency, because frequencies are expected to fall in a "sane" range
+;    1 byte = value added to / subtracted from frequency each frame while vibrato is active
+;               the scaling on this is the same as the previous byte
+;               the previous byte divided by this is the number of frames per quarter oscillation
+;    this command also disables arpeggio
 ;  $70: set arpeggio
 ;    1 byte = the number of notes in all following arpeggios ($00 has undefined behavior)
 ;    1 byte = the number of frames per note
-;    this command also enables arpeggio (and hence disables vibrato)
+;    this command also disables vibrato
 ;  $80: rest (do not play anything for a set number of frames)
 ;    1 byte = number of frames to rest
 ;  $90: unconditional jump
@@ -70,8 +72,8 @@ format ti appvar
 ;  $e0: end of this channel (stop playing notes in this channel, still continue all other channels)
 ;  $f0: end of the song (finish all channels immediately)
 
-; a few notes (pun not intended) about frame timing:
-;   not having to read a new note, only advancing pulse width/arpeggio/vibrato is much more economical, especially if there are no new commands to be processed
+; a few comments about frame timing:
+;   not having to read a new note, and only advancing pulse width/arpeggio/vibrato is much more economical, especially if there are no new commands to be processed
 ;   slowdowns may be noticeable if multiple chains of complex commands execute in subsequent frames, and the player will not attempt to catch up if it missed a frame
 ;   however, even if one channel ends up taking more time, it may still be fine so long as the other channels do not require much further processing
 
@@ -104,7 +106,7 @@ ch3:
   db $50,200	; C5
   db $0f
 
-drumbass:
+drum:
 ; drum channel:
 ;   <len:byte><sequence:word>: play a drum sequence, <len> is the time in frames before the next command should be parsed, <sequence> is a pointer to the start of the drum sequence
 ;   if <len> is $00, the next byte specifies a command:
@@ -117,8 +119,10 @@ drumbass:
 ;     $e0: finish
 ;     $f0: exit
 ;   a sequence has a format of (1) a byte storing the length of the sequence, and (2) a sequence of bytes, (1) long, where any value != 0 is a wavelength to play on the bass channel, and 0 means noise
+; NOTE: the drum channel runs at 100 Hz as opposed to 50 Hz
 
+bass:
 ; bass channel:
-;   note that the bass channel will be muted if the drum channel is playing, as they're technically played on the same channel
+;   note that the bass channel will be muted if the drum channel is playing, as they're played on the same bitbang channel
 ;   the format is the same as for general-purpose pulse wave channels, except pwm and vibrato/glissando don't work, and only commands $00-$40,$70-$c0,$e0-$f0 work
-;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount (but it may be different for specific notes which can lead to phasing effects); however, for high notes, there should be no aliasing artifacts
+;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount, but not exactly the same, which can lead to phasing effects; however, there should be no aliasing artifacts (unlike on the general-purpose channels for high notes)

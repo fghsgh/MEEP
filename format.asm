@@ -5,7 +5,7 @@
 include "../tiformat.inc"
 format ti appvar
 
-  db "fghbeep2" ; magic number
+  db "MEEP" ; magic number
 
   org $0000 ; jump offsets are calculated at runtime because position inside memory is unpredictable
   dw ch0,ch1,ch2,ch3,drum,bass ; pointers to the start of all channels

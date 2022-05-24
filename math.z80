@@ -96,9 +96,10 @@ end repeat
 ;  A: diff
 ;  HL: base freq
 ; outputs:
-;  DE: A * HL >> 5
+;  HL: A * HL >> 11
 ; destroys:
-;  AF, BC=0, HL
+;  AF, BC=0, DE
+; 400-490cc
 calc_vib_diff:
   ex de,hl
   ld bc,$0800
@@ -114,17 +115,18 @@ calc_vib_diff:
 .not_add:
   djnz .loop
 
-  add hl,hl
-  rla
-  add hl,hl
-  rla
-  add hl,hl
-  rla
-  ld e,h
-  ld d,a
-  sla l
+  ld l,a
+  ld a,h
+  ld h,l
+  srl h
+  rra
+  srl h
+  rra
+  srl h
+  rra
+  ld l,a
   ret nc
-  inc de
+  inc hl
   ret
 
 

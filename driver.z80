@@ -258,8 +258,9 @@ general_driver:
   ld [pulsewavex.freq],hl
   ld [vib_state.addr],hl
   push hl
-  ld a,vib_diff               ;         uint16_t vib_offset = vib_state * vib_diff >> 8;
+  ld a,vib_diff               ;         uint16_t vib_offset = vib_state * vib_diff >> 11;
   call calc_vib_diff
+  ex de,hl
   pop hl                      ;         vib_other_bound = vib_state - vib_offset;
   push hl
   sbc hl,de
@@ -267,7 +268,7 @@ general_driver:
   add hl,de                   ;         vib_now_bound = vib_state + vib_offset;
   add hl,de
   ld [vib_now_bound.addr],hl
-  pop hl                      ;         vib_change = vib_state * vib_speed >> 8;
+  pop hl                      ;         vib_change = vib_state * vib_speed >> 11;
   ld a,vib_speed
   call calc_vib_diff
   ld [vib_change.addr],hl

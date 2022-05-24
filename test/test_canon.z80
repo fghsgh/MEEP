@@ -9,4 +9,10 @@ include "../ram.z80"
 include "init_driver.z80"
 
 song:
+appvar_start_init := 0
 include "../songs/canon/canon.z80"
+
+
+repeat 1,v:calc_vib_diff
+  display "calc_vib_diff = ",`v,10
+end repeat

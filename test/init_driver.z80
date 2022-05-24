@@ -43,7 +43,7 @@ repeated_init:                ; this is the part that has to be redone every tim
   driver_init                 ; initialize driver
   bitbang_init                ; initialize bitbang
 
-  ld hl,0                     ; set appvar start (to 0 in this case because we're using absolute addressing)
+  ld hl,appvar_start_init
   ld [appvar_start],hl
 
   ld a,$fd                    ; wait for ENTER key to be pressed
@@ -63,9 +63,10 @@ repeated_init:                ; this is the part that has to be redone every tim
 
   ld a,$bf                    ; check for any of the function keys and mute corresponding channels
   out [$01],a
-  nop
-  nop
+  ex [sp],hl                  ; lots of keys may be pressed, we need more than two NOPs of delay (this was actually causing a bug for me)
+  ex [sp],hl
   in a,[$01]
+  out [$11],a
   ld e,a
   xor a
 
@@ -85,12 +86,24 @@ repeated_init:                ; this is the part that has to be redone every tim
   djnz .mute_loop
 
   ld hl,song                  ; set channel pointers (TODO: [appvar_start])
-  ld bc,$06ff
+  ld a,6
 .set_channel_pointers_loop:
-  pop de
-  ldi
-  ldi
-  djnz .set_channel_pointers_loop
+  ld e,[hl]
+  inc hl
+  ld d,[hl]
+  inc hl
+  ex de,hl
+  ld bc,appvar_start_init
+  add hl,bc
+  ld c,l
+  ld b,h
+  pop hl
+  ld [hl],c
+  inc hl
+  ld [hl],b
+  ex de,hl
+  dec a
+  jr nz,.set_channel_pointers_loop
 
   exx                         ; restore SP back to the stack
   ld sp,hl

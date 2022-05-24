@@ -1,5 +1,5 @@
 ; noise: $16 bytes
-; bass: ? bytes (doesn't matter)
+; bass: $17 bytes
 ; others: $14 bytes
 ; uses RAM $c000-$c07c, $c0c0-$c0c8
 ; also claims index and shadow registers, so do not use these after initialization

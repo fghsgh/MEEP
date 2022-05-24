@@ -66,9 +66,13 @@ format ti appvar
 ;  $b0: set table value
 ;    1 byte = index of value to set
 ;    1 byte = value to set it to, all values are initialized to 0 (there is only one table and it is shared between all channels)
-;  $c0: sync wave phases to 0
-;    1 byte = bitmask (bit 0 = channel 0, bit 3 = channel 3, bit 4 = bass, bit 5 = noise)
-;               for noise, this sets the random seed to 1 instead
+;  $c0: sync oscillator to channel
+;    1 byte = channel to sync to
+;    this will stop this channel's oscillator and continuously sync it to the given channel
+;    the given channel number can be in the range 0-3
+;    this will have the effect that two channels will always play the same note (although they can still have a separate pulse width, mask, and timings)
+;    set a channel's sync to itself to give it its oscillator back
+;    note: syncing channels like this actually frees up CPU time
 ;  $d0: reserved (as of now, does nothing)
 ;  $e0: end of this channel (stop playing notes in this channel, still continue all other channels)
 ;  $f0: end of the song (finish all channels immediately)
@@ -116,7 +120,6 @@ drum:
 ;     $90,<pos:word>: unconditional jump
 ;     $a0,<index:byte><pos:word>: djnz
 ;     $b0,<index:byte><value:byte>: set table value
-;     $c0,<bitmask:byte>: sync channels
 ;     $e0: finish
 ;     $f0: stop
 ;   a sequence has a format of (1) a byte storing the length of the sequence, and (2) a sequence of bytes, (1) long, where any value != 0 is a wavelength to play on the bass channel, and 0 means noise
@@ -125,5 +128,5 @@ drum:
 bass:
 ; bass channel:
 ;   note that the bass channel will be muted if the drum channel is playing, as they're played on the same bitbang channel
-;   the format is the same as for general-purpose pulse wave channels, except pwm and vibrato/glissando don't work, and only commands $00-$40,$70-$c0,$e0-$f0 work
+;   the format is the same as for general-purpose pulse wave channels, except pwm and vibrato/glissando don't work, and only commands $00-$40,$70-$b0,$e0-$f0 work
 ;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount, but not exactly the same, which can lead to phasing effects; however, there should be no aliasing artifacts (unlike on the general-purpose channels for high notes)

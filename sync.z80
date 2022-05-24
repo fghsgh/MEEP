@@ -1,0 +1,137 @@
+; A: channel to sync
+; C: channel to sync to
+; 199cc + whatever the LDIR takes
+; or 207cc+LDIR if A=2
+; destroys: AF, BC=0, DE, HL
+sync:
+  add a,a                     ; 10A
+  ld b,a
+  add a,a
+  add a,a
+  add a,b
+                              ; patches[10A].next
+  add a,(.patches and $00ff) + 8
+  ld l,a
+  ld h,.patches shr 8
+  ld d,[hl]                   ; next -> D (later -> BC)
+  inc l
+  ld e,[hl]                   ; patch_end -> E (later -> DE)
+  sub 8                       ; patches[10A].patches[2C] -> HL
+  add a,c
+  add a,c
+  ld l,a
+  ld a,[hl]
+  inc l
+  ld h,[hl]
+  ld l,a
+
+  ld a,e                      ; patch_begin = patch_end - patch_length
+  sub [hl]                    ; 8-bit sub because the bitbang drivers are all in $C0XX
+  ld e,a
+  ld a,d                      ; E -> DE, D -> A -> BC
+  ld c,d
+  ld b,waves_ram
+  ld d,b
+  cp noisewave.next and $00ff ; patch_begin -> next
+  ld a,e                      ; if A=2, write to [basswave.next] too
+
+  di
+  jr nz,.not_basswave
+  ld [basswave.next],a
+.not_basswave:
+  ld [bc],a
+  ld c,[hl]                   ; patch_length -> BC
+  ld b,0
+  inc hl                      ; patch_data -> HL
+  ldir                        ; patch
+  ei
+  ret
+
+.patches:
+.patches.0:
+  dw .patches.0.0,.patches.0.1,.patches.0.2,.patches.0.3
+  db pulsewave1.next and $00ff, (pulsewave2 + 7) and $00ff
+.patches.1:
+  dw .patches.1.0,.patches.1.1,.patches.1.2,.patches.1.3
+  db pulsewave2.next and $00ff, (pulsewave3 + 7) and $00ff
+.patches.2:
+  dw .patches.2.0,.patches.2.1,.patches.2.2,.patches.2.3
+  db noisewave.next  and $00ff, (pulsewave0 + 6) and $00ff
+.patches.3:
+  dw .patches.3.0,.patches.3.1,.patches.3.2,.patches.3.3
+  db pulsewave0.next and $00ff, (pulsewave1 + 5) and $00ff
+assert ($ shr 8) = (.patches shr 8)
+
+.patches.0.0:
+  db 4
+; ld hl,$0000
+  ex de,hl
+  add ix,de
+  ex de,hl
+
+.patches.0.1:
+  db 4
+  ld a,iyh
+  ld ixh,a
+
+.patches.0.2:
+  db 2
+  ld ixh,b
+
+.patches.0.3:
+  db 2
+  ld ixh,d
+
+.patches.1.0:
+  db 4
+  ld a,ixh
+  ld iyh,a
+
+.patches.1.1:
+  db 4
+; ld hl,$0000
+  ex de,hl
+  add iy,de
+  ex de,hl
+
+.patches.1.2:
+  db 2
+  ld iyh,b
+
+.patches.1.3:
+  db 2
+  ld iyh,d
+
+.patches.2.0:
+  db 2
+  ld b,ixh
+
+.patches.2.1:
+  db 2
+  ld b,iyh
+
+.patches.2.2:
+  db 2
+  ld c,l
+  ld b,h
+
+.patches.2.3:
+  db 1
+  ld b,d
+
+.patches.3.0:
+  db 2
+  ld d,ixh
+
+.patches.3.1:
+  db 2
+  ld d,iyh
+
+.patches.3.2:
+  db 1
+  ld d,b
+
+.patches.3.3:
+  db 2
+  add hl,de
+  ex de,hl

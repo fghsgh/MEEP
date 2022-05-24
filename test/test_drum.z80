@@ -9,22 +9,42 @@ include "../ram.z80"
 include "init_driver.z80"
 
 song:
+appvar_start_init := song
 dw ch0,ch1,ch2,ch3,drumstart,bassstart
 
-kick:
-  db 13,$00,$1a,$3b,$3b,$5d,$5d,$85,$98,$ff,$ff,$ff,$ff,$ff
+;  db 9,$00,$3b,$3b,$5d,$5d,$85,$98,$ff,$ff
+;  db 4,$00,$50,$70,$c0
+;  db 5,$40,$50,$60,$80,$b0,$f0
+;  db 8,0,$2D,$64,$93,$ba,$d9,$f0,$ff
+;  db 6,0,$2D,$64,$93,$ba,$f0
+;  db 3,$10,$00,$00
+
+snare:
+  db 6,0,0,$30,0,0,0
+
+
+
+beat1:
   db 4,$00,$50,$70,$c0
-  db 5,$40,$50,$60,$80,$b0,$f0
-  db 8,0,$2D,$64,$93,$ba,$d9,$f0,$ff
+beat2:
+  db 3,0,0,0
+beat3:
+  db 6,0,$49,$73,$a0,$ba,$d9
+beat4:
+  db 8,0,$2d,$64,$93,$ba,$d9,$f0,$ff
+beat5:
+  db 5,0,$64,$93,$ba,$d9
 
 drumstart:
-  db 0,$b0,0,16
-loop:
-  db 25
-  dw kick
-  db 0,$a0,0
-  dw loop
 
+repeat 5
+  db 0,$b0,0,8
+loop#%:
+  db 50
+  dw beat#%
+  db 0,$a0,0
+  dw loop#%
+end repeat
 
   db $00
 ch0:

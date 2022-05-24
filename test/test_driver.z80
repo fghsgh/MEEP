@@ -1,7 +1,7 @@
 include "../z80.inc"
 include "../relocatable.inc"
 include "../tiformat.inc"
-include "../ti83plusg_.inc"
+include "../ti83plus.inc"
 format ti executable "A"
 
 include "../ram.z80"
@@ -183,13 +183,4 @@ after8000:
   include "../math.z80"
   include "../driver.z80"
   include "../bitbang.z80"
-
-include "../../z80.inc"
-include "../relocatable.inc"
-include "../../tiformat.inc"
-include "../../ti83plusg_.inc"
-format ti executable "A"
-
-include "../ram.z80"
-
 

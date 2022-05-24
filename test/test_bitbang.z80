@@ -1,5 +1,5 @@
 include "../../z80.inc"
-include "../../ti83plusg.inc"
+include "../../ti83plus.inc"
 format binary as "bin"
 
   db $bb,$6d

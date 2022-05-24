@@ -23,3 +23,5 @@ what doesn't work anymore:
 - `test/test_driver.z80` at some point I used this to test `driver.z80` but I don't think it works anymore
 
 also, note: all of the `test_*.z80` files are named `prgmA` on-calc
+
+You may want to change `cpuspeed.z80` to tune the notes to your own calc. Check the file for instructions. (at some point this is supposed to measure the CPU speed and tune itself automatically, but that's not implemented yet)

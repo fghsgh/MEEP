@@ -1,5 +1,15 @@
 /gitignore/
 *.8xp
+*.8xv
 *.swp
 *.swo
 *.bin
+
+*.ogg
+*.pdf
+*.aup
+*.wav
+*.rg
+*.mp4
+.~lock*
+*.ods

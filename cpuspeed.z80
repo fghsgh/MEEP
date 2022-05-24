@@ -23,13 +23,13 @@ tunings:
 ;   69, 12, 440, (freq / (5 * 176)) = same as above
 ;   2 = because we're only counting half the wavelength, not all of it
 ;   round() should round to the nearest whole number
-; if any of these is too big for 8-bit, then your clock speed is too high, see below for a fix
+; if any of these are too big for 8-bit, then your clock speed is too high, see below for a fix
   db $8E,$86,$7E,$77,$70,$6A,$64,$BD,$B3,$A9,$9F,$96
 ; WHAT TO DO IF SOME NUMBERS ARE OUT OF RANGE:
 ; you can try messing with the interrupt frequency (that 176 number in the formula)
 ; if your clock speed is too high, you can decrease the interrupt frequency (increase the 176)
 ; if your clock speed is too low, you can try increasing the interrupt frequency *slightly* (decrease the 176) (make sure it stays above 159cc or so, as that's the longest the interrupt itself can take)
-; for this, find where I'm setting the interrupt frequency (probably init_driver.z80, search the file for 176, but check the file you're assembling )
+; for this, find where I'm setting the interrupt frequency (probably init_driver.z80, search the file for 176, but check the file you're assembling, maybe it's doing it somewhere else)
 ; ...and of course change the 176 in the formulas above
 
 

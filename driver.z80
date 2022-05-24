@@ -520,7 +520,7 @@ general_driver:
 ; smc between JR and CP to choose arp or vib
 .do_arp_jr_smc:
   cp .do_vib - ($ + 2)        ; if (do_arp) {
-  ld a,arp_delay              ;   if (!--arp_delay) {
+  ld a,arp_delay + 1          ;   if (!--arp_delay) {
   dec a
   jq nz,.arp_delayed
 
@@ -540,7 +540,7 @@ general_driver:
   call decode_note
   ld [pulsewavex.freq],hl
 
-  ld a,arp_delay_reset + 1    ;     arp_delay = arp_delay_reset;
+  ld a,arp_delay_reset + 0    ;     arp_delay = arp_delay_reset;
 .arp_delayed:                 ;   }
   ld [arp_delay.addr],a
   jq ch_driver.next           ; } else {

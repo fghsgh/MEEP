@@ -1,0 +1,113 @@
+
+
+macro lcd_init
+
+; decompresses font_data_compressed
+decompress_3x3font:
+  ld hl,font_data_compressed
+  xor a
+  ld de,font
+  ld bc,$1803
+
+.loop:
+  call .nibble
+  call .nibble
+  rld
+  inc hl
+  djnz .loop
+
+end macro
+
+
+decompress_3x3font.nibble:
+  rld
+  ld [de],a
+  inc e
+  dec c
+  ret nz
+  inc e
+  ld c,3
+  ret
+
+font_data_compressed:
+; font encoding: AA AB BB CC CD DD -> 0A 0A 0A 00 0B 0B 0B 00 0C 0C 0C 00 0D 0D 0D 00
+  db $ea,$e2,$22,$c4,$6e,$6e
+  db $ae,$26,$4c,$8e,$ee,$22
+  db $ee,$ee,$e2
+
+
+
+
+
+
+
+  ld a,$20
+  out [$10],a
+  ld d,font shr 8
+  ld hl,score + 2
+  ld a,$01
+  call dispnum
+  ld l,score + 1 and $ff
+  ld a,$01
+  call dispnum
+  ld l,score + 0 and $ff
+  ld a,$01
+  call dispnum
+
+  ld a,$2a
+  out [$10],a
+  ld l
+
+; displays a hex number on lcd
+; inputs:
+;   a: value to output to port $10 before doing anything else
+;   hl: pointer to hex byte to display
+;   [score_row.addr]: row command to send to lcd
+;   d: must be (font shr 8)
+;   h must equal d
+;   lcd must be set to the correct column, and to 8-bit mode (it sets it to row increment mode)
+; outputs:
+;   outputs 3 bytes to lcd
+;   cursor moved one to the left, set to column decrement mode
+; destroys: AF, E, L
+; timing: 336cc
+
+assert (score and $ff00) = (font and $ff00)
+
+dispnum:
+  out [$10],a
+
+  ld a,[hl]
+  rlca
+  rlca
+  and $3c
+  ld e,a
+
+  ld a,score_row
+  out [$10],a
+
+  ld a,[hl]
+  rrca
+  rrca
+  and $3c
+  ld l,a
+
+  ld a,$05
+  out [$10],a
+
+  call .loop
+  call .loop
+  ld a,$07
+  out [$10],a
+.loop:
+  ld a,[de]
+  add a,a
+  add a,a
+  add a,a
+  add a,a
+  or [hl]
+  out [$11],a
+  inc de
+  inc hl
+  ret
+

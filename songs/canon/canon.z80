@@ -204,8 +204,8 @@ ch1:
   db $65,24
   db $95,24
 ; 19
-  db $00,$00,$10,$f0 ; pwm really wide and slow
-  dw 180
+  db $00,$00,$20,$e0 ; pwm really wide and slow
+  dw 146
   db $95,12
   db $70,3,6 ; 3 arp notes, 6 apart
   db $65,$75,$95,24

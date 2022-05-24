@@ -5,8 +5,32 @@
   jq after_tunings
 
 tunings:
+; FOR GENERAL PURPOSE CHANNELS
+; set these to `round(2^((n - 69) / 12) * 440 * 65536 / (freq / (5 * 176)))` with
+;   n = 120..131 (MIDI codes for C9..B9)
+;   69 = MIDI code for A4
+;   12 = number of semitones in an octave
+;   440 = target frequency of A4 in Hz
+;   65536 = total size of oscillator
+;   freq = CPU frequency in fast mode in Hz (normally around 15-16 MHz)
+;   5 * 176 = number of clock cycles per effective sample (the 5 multiplier is because there are 5 channels of 176cc each)
+;   round() should round to the nearest whole number
+; if any of these are too big for 16-bit, then your clock speed is too low, see below for a possible fix
   dw $739C,$7A7C,$81C4,$897C,$91A9,$9A52,$A37F,$AD38,$B785,$C26E,$CDFE,$DA3E
+; FOR BASS CHANNEL
+; set these to `round(1 / (2^((n - 69) / 12) * 440) * (freq / (5 * 176)) / 2)` with
+;   n = 36..42, then 31..35 (MIDI codes for C2..F#2, G1..B1)
+;   69, 12, 440, (freq / (5 * 176)) = same as above
+;   2 = because we're only counting half the wavelength, not all of it
+;   round() should round to the nearest whole number
+; if any of these is too big for 8-bit, then your clock speed is too high, see below for a fix
   db $8E,$86,$7E,$77,$70,$6A,$64,$BD,$B3,$A9,$9F,$96
+; WHAT TO DO IF SOME NUMBERS ARE OUT OF RANGE:
+; you can try messing with the interrupt frequency (that 176 number in the formula)
+; if your clock speed is too high, you can decrease the interrupt frequency (increase the 176)
+; if your clock speed is too low, you can try increasing the interrupt frequency *slightly* (decrease the 176) (make sure it stays above 159cc or so, as that's the longest the interrupt itself can take)
+; for this, find where I'm setting the interrupt frequency (probably init_driver.z80, search the file for 176, but check the file you're assembling )
+; ...and of course change the 176 in the formulas above
 
 
 if 0

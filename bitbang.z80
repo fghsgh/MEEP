@@ -1,13 +1,10 @@
-; NOTE: the numbers (including addresses) in the next few lines are inaccurate
-
 ; noise: $16 bytes
 ; bass: ? bytes (doesn't matter)
 ; others: $14 bytes
-; uses RAM $c000-$c07c, $caca-$cad2, $cb00-$cc00
+; uses RAM $c000-$c07c, $c0c0-$c0c8
 ; also claims index and shadow registers, so do not use these after initialization
 
 ; bitbang_init is a macro that generates these routines:
-; it also generates an interrupt vector table at $cb00 (inside statvars) pointing to $caca
 ; (labels below are real labels)
 ; (actual data is compressed inside program binary)
 

@@ -1,3 +1,5 @@
+; NOTE: the numbers (including addresses) in the next few lines are inaccurate
+
 ; noise: $16 bytes
 ; bass: ? bytes (doesn't matter)
 ; others: $14 bytes
@@ -93,7 +95,7 @@
 ;   ex de,hl
 ;   add iy,de
 ;   ex de,hl
-;   ld a,b
+;   ld a,d
 ;
 ; pulsewave3.width := $ + 1
 ;   cp $00

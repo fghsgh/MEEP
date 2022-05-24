@@ -41,10 +41,11 @@ format ti appvar
 ;    1 byte = length in frames
 ;               the glide will overwrite vibrato settings, and enable vibrato (and thus disable arpeggio), so be sure to restore it afterwards or else every next note will also be a glide
 ;               this is because the vibrato code is repurposed for the glide, and I didn't feel like writing code to restore the arpeggio/vibrato settings after finishing a glide
+;               note that, although it does enable vibrato, the vibrato settings as set by $60 are not changed
 ;  $60: set vibrato properties
 ;    1 byte = vibrato delay, in frames (how long the note must have been playing before vibrato takes effect)
 ;    1 byte = how much the frequency of the playing note can differ from its standard frequency
-;               the scaling on this is such that 2048 is one octave up and one octave down (of course, 1024 is out of range)
+;               the scaling on this is such that 2048 is one octave up and infinity down (of course, 2048 is out of range)
 ;               hence, (2^(1/12)-1)*2048, which is approximately 122, will result in one semitone up&down
 ;               unlike with pulse width modulation, carry is NOT handled when oscillating the frequency, because frequencies are expected to fall in a "sane" range
 ;    1 byte = value added to / subtracted from frequency each frame while vibrato is active
@@ -117,7 +118,7 @@ drum:
 ;     $b0,<index:byte><value:byte>: set table value
 ;     $c0,<bitmask:byte>: sync channels
 ;     $e0: finish
-;     $f0: exit
+;     $f0: stop
 ;   a sequence has a format of (1) a byte storing the length of the sequence, and (2) a sequence of bytes, (1) long, where any value != 0 is a wavelength to play on the bass channel, and 0 means noise
 ; NOTE: the drum channel runs at 100 Hz as opposed to 50 Hz
 

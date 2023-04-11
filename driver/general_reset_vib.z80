@@ -1,0 +1,36 @@
+; resets the vibrato state for the start of a new note
+; inputs:
+;  HL: channel pointer
+;  C: already read note code
+; outputs:
+;  HL: channel pointer
+; destroys:
+;  AF, BC, DE, HL
+
+  inc hl                      ;         vib_state = decode_note(*channel_pointer++);
+  push hl
+  call decode_note
+  ld [pulsewavex.freq],hl
+  ld [vib_state.addr],hl
+  push hl
+  ld a,vib_diff               ;         uint16_t vib_offset = vib_state * vib_diff >> 11;
+  call calc_vib_diff
+  ex de,hl
+  pop hl                      ;         vib_other_bound = vib_state - vib_offset;
+  push hl
+  sbc hl,de
+  ld [vib_other_bound.addr],hl
+  add hl,de                   ;         vib_now_bound = vib_state + vib_offset;
+  add hl,de
+  ld [vib_now_bound.addr],hl
+  pop hl                      ;         vib_change = vib_state * vib_speed >> 11;
+  ld a,vib_speed
+  call calc_vib_diff
+  ld [vib_change.addr],hl
+  ld a,vib_delay_reset        ;         vib_delay = vib_delay_reset;
+  ld [vib_delay.addr],a
+  ld a,_adc                   ;         vib_decr = false;
+  ld [.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [.vib_c_smc],a
+  pop hl

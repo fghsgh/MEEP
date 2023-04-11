@@ -11,3 +11,25 @@ streak := $c243 ; streak counter as a 4-digit BCD number
 interrupt_table_ram := $c300 ; 257 $c0 bytes
 driver_ram := $c401 ; start of the drivers
 ram2_safe := $da7e ; start of saferam on ram page 2
+
+; some instructions used for SMC purposes
+virtual
+  adc hl,de
+load _adc:1 from $-1
+  sbc hl,de
+load _sbc:1 from $-1
+  jr c,$
+load _jrc:1 from $-2
+  jr nc,$
+load _jrnc:1 from $-2
+assert _adc xor _jrnc = _sbc xor _jrc
+  ld hl,0
+load _ldhl:1 from $-3
+  jp 0
+load _jp:1 from $-3
+  jr $
+load _jr:1 from $-2
+  cp 0
+load _cp:1 from $-2
+end virtual
+

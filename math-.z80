@@ -147,7 +147,8 @@ calc_vib_diff:
 ;  jr c,.overflow
 ;  djnz .loop
 
-; HL / B -> 
+; HL / B -> L
+; TODO: this is broken
 hl_div_b:
   add hl,hl
   ld a,h
@@ -180,6 +181,54 @@ end repeat
   sub b
   inc l
   ret
+
+
+; CDEHL / C'DE' -> CDEHL (mod AHL')
+; result is assumed to be 16-bit, and is rounded
+cdehl_div_cde_:
+  ld b,40
+  exx
+  xor a
+  ld l,a
+  ld h,a
+
+.loop:
+  add ix,ix
+  rl e
+  rl d
+  rl c
+  adc hl,hl
+  rla
+
+
+  add hl,hl
+  rl e
+  rl d
+  rl c
+
+  exx
+  adc hl,hl
+  rla
+  jq c,.carry
+  sbc hl,de
+  sbc a,c
+  jq c,.no_div
+  exx
+  inc l
+  jq .next
+
+.no_div:
+  add hl,de
+  adc a,c
+  jq .after_div
+
+.div:
+  exx
+  inc l
+.after_div:
+  djnz .loop
+  jq .done
+
 
 
 ;hl_div_c:

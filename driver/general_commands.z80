@@ -1,0 +1,149 @@
+; see parse_command.z80 for more information
+
+.switch_cases:
+; the ones without period are global
+  dw .cmd_pwm,.cmd_mask,.cmd_additive,.cmd_subtractive
+  dw .cmd_fractional,.cmd_glide,.cmd_vibrato,.cmd_arpeggio
+  dw .cmd_rest,cmd_jump,cmd_djnz,cmd_table_value
+  dw cmd_set_phase,cmd_nothing,.cmd_finish,cmd_exit
+
+.cmd_pwm:                     ;         case 0x00:
+  ex de,hl
+  ld a,[hl]                   ;           pw_start = *channel_pointer++;
+  inc hl
+  ld [pw_start.addr],a
+  ld a,[hl]                   ;           pw_other_bound = *channel_pointer++;
+  inc hl
+  ld [pw_other_bound.addr],a
+  ld [pw_lower.addr],a
+  ld a,[hl]                   ;           pw_now_bound = *channel_pointer++;
+  inc hl
+  ld [pw_now_bound.addr],a
+  ld [pw_upper.addr],a
+  ld e,[hl]                   ;           pw_change = *channel_pointer++;
+  inc hl
+  ld d,[hl]                   ;           pw_change |= *channel_pointer++ << 8;
+  inc hl
+  ld [pw_change.addr],de
+  ld a,_jrc                   ;           pw_decr = false;
+  ld [.pw_nc_smc],a
+  xor _jrc xor _jrnc
+  ld [.pw_c_smc],a
+  ret                         ;           break;
+
+.cmd_mask:                    ;         case 0x10:
+  ex de,hl
+  ld a,[hl]                   ;           mask = *channel_pointer++;
+  inc hl
+  ld [mask.addr],a
+  ret                         ;           break;
+
+.cmd_fractional:              ;         case 0x40:
+  inc a                       ;           note_len_type = FRACTIONAL;
+.cmd_subtractive:             ;         case 0x30:
+  inc a                       ;           note_len_type = SUBTRACTIVE;
+.cmd_additive:                ;         case 0x20:
+  ld [note_len_type.addr],a   ;           note_len_type = ADDITIVE;
+  ex de,hl
+  ld a,[hl]                   ;           note_len_argument = *channel_pointer++;
+  inc hl
+  ld [note_len_argument.addr],a
+  ret                         ;           break;
+
+; the following section has had many of its C lines rearranged to be able to use more registers
+.cmd_glide:                   ;         case 0x50:
+  ld a,[de]                   ;           vib_other_bound = decode_note(*channel_pointer++);
+  inc de
+  ld c,a
+  call decode_note
+  ld [vib_other_bound.addr],hl
+  ld [vib_state.addr],hl      ;           vib_state = vib_other_bound;
+  ld a,_jr                    ;           do_arp = false;
+  ld [.do_arp_jr_smc],a
+  ld a,[de]                   ;           vib_now_bound = decode_note(*channel_pointer++);
+  inc de
+; push de ; channel_pointer
+  push hl ; first note
+  ld c,a
+  call decode_note
+  ld [vib_now_bound.addr],hl
+  pop bc                      ;           vib_change = abs(vib_other_bound - vib_now_bound) / note_len;
+  or a
+  sbc hl,bc ; second - first
+  ld a,_sbc
+  jq nc,.glide_down
+  ld a,l
+  neg
+  ld l,a
+  ld a,h
+  sbc a,0
+  cpl
+  ld h,a
+
+  ld a,_adc                   ;           vib_decr = vib_now_bound < vib_other_bound;
+.glide_down:
+  ld [.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [.vib_c_smc],a
+
+; pop de
+  ld a,[de]
+  inc de
+  ld c,a
+  call do_note_len            ;           {note_len,rest_len} = do_note_len(*channel_pointer++);
+  ld b,a                      ;           vib_change = abs(vib_other_bound - vib_now_bound) / note_len;
+  call hl_div_b
+  ld [vib_change.addr],hl
+  ex de,hl
+  ret                         ;           break;
+
+.cmd_vibrato:                 ;         case 0x60:
+  ex de,hl
+  ld a,_jr                    ;           do_arp = false;
+  ld [.do_arp_jr_smc],a
+  ld a,[hl]                   ;           vib_delay_reset = *channel_pointer++ + 1;
+  inc hl
+  inc a
+  ld [vib_delay_reset.addr],a
+  ld a,[hl]                   ;           vib_diff = *channel_pointer++;
+  inc hl
+  ld [vib_diff.addr],a
+  ld a,[hl]                   ;           vib_speed = *channel_pointer++;
+  inc hl
+  ld [vib_speed.addr],a
+  ret                         ;           break;
+
+.cmd_arpeggio:                ;         case 0x70:
+  ex de,hl
+  ld a,_cp                    ;           do_arp = true;
+  ld [.do_arp_jr_smc],a
+  ld a,[hl]                   ;           arp_count_reset = *channel_pointer++;
+  inc hl
+  ld [arp_count_reset.addr],a
+  ld a,[hl]                   ;           arp_delay_reset = *channel_pointer++;
+  inc hl
+  ld [arp_delay_reset.addr],a
+  ret                         ;           break;
+
+.cmd_rest:                    ;         case 0x80:
+  ld [pulsewavex.mask],a      ;           channel.mask = 0;
+  ex de,hl
+  ld a,[hl]                   ;           rest_len = *channel_pointer++ + 1;
+  inc hl
+; inc a
+  ld [rest_len.addr],a
+  ld [channel_pointer.addr],hl
+  pop af                      ; no note should be read after this one, throw away return address
+  jq ch_driver.next           ;           break;
+
+.cmd_finish:                  ;         case 0xe0:
+  ld [pulsewavex.mask],a      ;           channel.mask = 0;
+  pop hl
+  ld hl,channels_playing      ;           playing--;
+  dec [hl]
+  ret z
+  ld a,_jp
+  ld [general_driver],a
+  ld hl,ch_driver.next
+  ld [general_driver + 1],hl
+  jp hl                       ;           return;

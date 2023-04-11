@@ -1,0 +1,36 @@
+; handles the vibrato state for one frame
+; inputs: none
+; outputs: none
+; destroys: AF, BC, DE, HL
+
+  or a
+  ld hl,vib_state             ;     channel.freq = vib_state;
+  ld [pulsewavex.freq],hl
+  ld de,vib_change            ;     if (vib_decr)
+.vib_sbc_smc := $ + 1         ;       vib_state -= vib_change;
+  adc hl,de                   ;     else
+                              ;       vib_state += vib_change;
+; assume carry never happens here because sensible frequency ranges
+
+  ex de,hl                    ;     if (vib_decr ? vib_state < vib_now_bound : vib_state > vib_now_bound) {
+  ld hl,vib_now_bound
+  sbc hl,de
+.vib_c_smc:
+  jq nc,.vib_no_wraparound
+
+  ld de,[vib_now_bound.addr]  ;       vib_state = 2 * vib_now_bound - vib_state;
+  add hl,de
+  ex de,hl
+  ld bc,vib_other_bound       ;       swap(vib_now_bound,vib_other_bound);
+  ld [vib_other_bound.addr],hl
+  ld [vib_now_bound.addr],bc
+
+  ld a,[.vib_sbc_smc]
+  xor _adc xor _sbc
+  ld [.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [.vib_c_smc],a
+
+.vib_no_wraparound:
+  ld [vib_state.addr],de
+

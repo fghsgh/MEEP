@@ -128,17 +128,17 @@
 
 ; basswave: (at $c066)
 ; basswave.state := $ + 1
-;   ld hl,$0000
+;   ld hl,$f000
 ;   dec l
 ;   ld a,h
+;   rlca
 ;   jr nz,basswave.end
-;   cpl
 ;   ld h,a
 ; basswave.length := $ + 1
 ;   ld l,$00
 ; basswave.end:
 ;   ld [basswave.state],hl
-; basswave.size := $ - $$
+;   sbc a,a
 ; basswave.mask := $ + 1
 ;   and $00
 ; basswave.next := $ + 1
@@ -238,21 +238,33 @@ load .data: .size from $$
 end virtual
   db .data
 
+;   ld hl,$f000
+;   dec l
+;   ld a,h
+;   rlca
+;   jr nz,basswave.end
+;   ld h,a
+; basswave.length := $ + 1
+;   ld l,$00
+; basswave.end:
+;   ld [basswave.state],hl
+;   sbc a,a
 basswave.source:
 virtual at noisewave.end
 basswave:
 smcable .state_smc,.state
 smcable .length_smc,.length
 smcable .mask_smc,.mask
-  ld hl,.state_smc
+  ld hl,.state_smc + $f000
   dec l
   ld a,h
+  rlca
   jr nz,.end
-  cpl
   ld h,a
   ld l,.length_smc
 .end:
   ld [.state],hl
+  sbc a,a
 .size := $ - $$
   and .mask_smc
   ld hl,$c000
@@ -306,21 +318,17 @@ load wave_end.data: wave_end.size from $$
 end virtual
   db wave_end.data
 
-macro ?!
-  local i
-  repeat 4,i:0
-    pulsewave#i := $c000 + 20 * i
-    iterate field,width,mask,next
-      pulsewave#i.field := pulsewave#i + pulsewave.field
-    end iterate
-    if i = 3
-      pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq + 1
-    else
-      pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq
-    end if
-  end repeat
-  purge ?
-end macro
+repeat 4,i:0
+  pulsewave#i := $c000 + 20 * i
+  iterate field,width,mask,next
+    pulsewave#i.field := pulsewave#i + pulsewave.field
+  end iterate
+  if i = 3
+    pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq + 1
+  else
+    pulsewave#i.freq := ((pulsewave#i - $c000 + 20 * 2) mod 80) + $c000 + pulsewave.freq
+  end if
+end repeat
 
 ch_size := 5
 channels:

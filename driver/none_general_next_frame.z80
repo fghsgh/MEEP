@@ -1,0 +1,117 @@
+; this file is unused (split into general_pwm.z80, general_arp.z80, general_vib.z80)
+
+  ld hl,pw_state              ; if (pw_decr)
+  ld bc,pw_change             ;   pw_state -= pw_change;
+                              ; else
+  add hl,bc                   ;   pw_state += pw_change;
+  ld a,pw_now_bound + $80
+.pw_nc_smc:
+  jr c,.pw_wraparound         ; if (carry || pw_decr ? pw_state < pw_now_bound : pw_state > pw_now_bound) {
+  cp h
+.pw_c_smc:
+  jr nc,.pw_no_wraparound
+.pw_wraparound:
+  ld d,a
+
+; the following lines are swapped around a bit for speed (and also for confusion)
+                              ;   pw_state = 2 * pw_now_bound - pw_state;
+                              ;   swap(pw_now_bound,pw_other_bound);
+; first part of the swap
+  ld a,pw_other_bound + $80
+  ld [pw_now_bound.addr],a
+; first part of the wraparound
+  xor a
+  sub l
+  ld e,a
+; second part of the swap
+  ld a,d
+  ld [pw_other_bound.addr],a
+; second part of the wraparound
+  ccf
+  adc a,a
+  sub h
+  ld d,a
+
+  xor a
+  sub c
+  ld l,a
+  sbc a,b
+  sub l
+  ld h,a
+  ld [pw_change.addr],hl
+  ex de,hl
+
+  ld a,[.pw_nc_smc]           ;   pw_decr = !pw_decr;
+  ld [.pw_c_smc],a
+  xor _jrc xor _jrnc
+  ld [.pw_nc_smc],a
+.pw_no_wraparound:            ; }
+  ld [pw_state.addr],hl
+  ld a,h                      ; channel.pw = pw_state >> 8;
+  ld [pulsewavex.width],a
+
+; smc between JR and CP to choose arp or vib
+.do_arp_jr_smc:
+  cp .do_vib - ($ + 2)        ; if (do_arp) {
+  ld a,arp_delay + 1          ;   if (!--arp_delay) {
+  dec a
+  jq nz,.arp_delayed
+
+  ld hl,arp_current           ;     channel.freq = decode_note(arp_current++);
+  ld c,[hl]
+  inc hl
+
+  ld a,arp_count + 1          ;     if (!--arp_count) {
+  dec a
+  jq nz,.no_arp_repeat
+  ld hl,arp_start             ;       arp_current = arp_start;
+  ld a,arp_count_reset + 1    ;       arp_count = arp_count_reset;
+.no_arp_repeat:               ;     }
+  ld [arp_count.addr],a
+
+  ld [arp_current.addr],hl    ;     channel.freq = decode_note(arp_current++);
+  call decode_note
+  ld [pulsewavex.freq],hl
+
+  ld a,arp_delay_reset + 0    ;     arp_delay = arp_delay_reset;
+.arp_delayed:                 ;   }
+  ld [arp_delay.addr],a
+  jq ch_driver.next           ; } else {
+
+; will only ever reach this if the JR C is SMC'd to a JR NC, so carry is always reset
+.do_vib:
+  ld a,vib_delay + 1          ;   if (!--vib_delay) {
+  dec a
+  jr nz,.vib_delayed          ; TODO jq
+  ; above label points to just a single "ld [vib_delay.addr],a" instruction that falls through to the next channel, so it's in ../driver.z80
+
+  ld hl,vib_state             ;     channel.freq = vib_state;
+  ld [pulsewavex.freq],hl
+  ld de,vib_change            ;     if (vib_decr)
+.vib_sbc_smc := $ + 1         ;       vib_state -= vib_change;
+  adc hl,de                   ;     else
+                              ;       vib_state += vib_change;
+; assume carry never happens here either because sensible frequency ranges
+
+  ex de,hl                    ;     if (vib_decr ? vib_state < vib_now_bound : vib_state > vib_now_bound) {
+  ld hl,vib_now_bound
+  sbc hl,de
+.vib_c_smc:
+  jq nc,.vib_no_wraparound
+
+  ld de,[vib_now_bound.addr]  ;       vib_state = 2 * vib_now_bound - vib_state;
+  add hl,de
+  ex de,hl
+  ld bc,vib_other_bound       ;       swap(vib_now_bound,vib_other_bound);
+  ld [vib_other_bound.addr],hl
+  ld [vib_now_bound.addr],bc
+
+  ld a,[.vib_sbc_smc]
+  xor _adc xor _sbc
+  ld [.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [.vib_c_smc],a
+
+.vib_no_wraparound:
+  ld [vib_state.addr],de
+

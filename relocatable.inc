@@ -24,11 +24,12 @@
 ; >  ld (variable + 3),hl
 ; > relocatable variable,length,code_start
 
-; smcable <identifier>,<address>
+; smcable <identifier>,<address>,[default=0]
 ; this macro will define an element <identifier> that can be used as an immediate argument in a single instruction
 ; the address where the immediate argument would have been stored will be stored in <address>
 ; after this, it is possible to modify the immediate argument using SMC, using <address> as the address
-; the default value which will be emitted into the binary, is the constant term of the linear polynomial
+; multiple SMC variables can be in the same location by adding their elements
+; "default" is the value that the variable will be initialized to and emitted into the binary, and is either the third argument or the constant term of the linear polynomial (if there are multiple defaults provided, an error is thrown if they mismatch)
 ;
 ; the purpose of this is to facilitate the most common type of SMC, where only the immediate argument of an instruction is modified
 ;
@@ -39,7 +40,7 @@
 ; > smcable here,here_place
 
 macro ?!
-  local relocatable_data,smcable_data,scaleelement
+  local relocatable_data,smcable_data,smcable_defaults,scaleelement
 
   define relocatable_data
   relocatable_data.count = 0
@@ -48,8 +49,10 @@ macro ?!
   define smcable_data
   smcable_data.count = 0
 
+  define smcable_defaults
+
   macro @z80.word size*,value*
-    local v
+    local v,init_value
     v := value
     repeat elementsof v,el:1
       repeat 1,index:el metadataof v
@@ -58,6 +61,15 @@ macro ?!
             err "smcable element used more than once"
           else
             smcable_data.index.addr := $
+            if defined smcable_data.index.default
+              if definite init_value
+                if init_value <> smcable_data.index.default
+                  err "multiple mismatching default values provided"
+                end if
+              else
+                init_value := smcable_data.index.default
+              end if
+            end if
           end if
         else if (defined relocatable_data.index) & (el elementof v relativeto relocatable_data.index)
           if ~definite relocatable_data.index.count
@@ -72,7 +84,14 @@ macro ?!
         end if
       end repeat
     end repeat
-    emit size:0 scaleof v
+    if definite init_value
+      if (0 scaleof v) <> init_value
+        err "multiple mismatching default values provided"
+      end if
+    else
+      init_value := 0 scaleof v
+    end if
+    emit size:init_value
   end macro
   macro @z80.byte value*
     @z80.word 1,value
@@ -95,7 +114,7 @@ macro ?!
     end repeat
   end macro
 
-  macro smcable name*,address*
+  macro smcable name*,address*,default
     repeat 1,index:smcable_data.count + 1
       smcable_data.count = index
       element smcable_data.index:index

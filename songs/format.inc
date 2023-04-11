@@ -64,6 +64,8 @@ macro ?!
           mod_count = mod_count + 1
         else if char = 'b'
           mod_count = mod_count - 1
+        else if char = '-'
+          mod_end := % + 1
         else
           mod_end := %
           break
@@ -83,15 +85,20 @@ macro ?!
           err "invalid note '", `name, "': can't parse octave"
         end if
       end repeat
+
+      load char:byte from mod_end - 1
+      if char = '-'
+        octave = - octave
+      end if
     end virtual
 
     if note + mod_count < 0
       octave = octave + (note + mod_count - 11) / 12
     end if
-    if octave < 1 | octave > 8
+    if octave < -1 | octave > 8
       err "invalid note '", `name, "': octave out of range"
     end if
-    code = (((note + mod_count) mod 12 + 12) mod 12) shl 4 or octave
+    code = (((note + mod_count) mod 12 + 12) mod 12) shl 4 or (octave + 2)
   end macro
 
   macro note? length*, notes&

@@ -1,0 +1,63 @@
+
+; do_note_len: adjust a note length using any of ADDITIVE (max length), SUBTRACTIVE (constant gap), and FRACTIONAL
+; inputs:
+;   C: original note length
+;   [note_len_type.addr]: the type of length adjustment
+;   [note_len_argument.addr]: the argument used for the time adjustment
+; outputs:
+;   [note_len]: adjusted note length
+;   [rest_len]: consequent rest length
+;   A: [note_len]
+; destroys:
+;   AF, BC, HL
+do_note_len:
+  ld a,note_len_argument
+  ld b,note_len_type
+  djnz .not_subtractive
+.subtractive:
+  cp c
+  jq c,.subtract_len
+.full_len:
+  ld a,1
+  ld [rest_len.addr],a
+  ld a,c
+  ld [note_len.addr],a
+  ret
+
+.subtract_len:
+  ld b,a
+  inc a
+  ld [rest_len.addr],a
+  ld a,c
+  sub b
+  ld [note_len.addr],a
+  ret
+
+.not_subtractive:
+  djnz .not_fractional
+.fractional:
+  push de
+  ld e,c
+  ld h,a
+  call e_mul_h
+  ld a,c
+  sub h
+  inc a
+  ld [rest_len.addr],a
+  ld a,h
+  ld [note_len.addr],a
+  pop de
+  ret
+
+.not_fractional:
+.additive:
+  cp c
+  jq nc,.full_len
+  ld b,a
+  ld [note_len.addr],a
+  ld a,c
+  sub b
+  inc a
+  ld [rest_len.addr],a
+  ld a,b
+  ret

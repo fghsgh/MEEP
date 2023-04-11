@@ -1,0 +1,42 @@
+; resets the PWM for the start of a new note
+; inputs:
+;  HL: channel pointer
+; outputs:
+;  HL: channel pointer
+; destroys: AF, DE
+
+  ld a,pw_start + $80         ;       if (pw_start)
+  or a
+  jq z,.no_set_pw_start
+  ld [pulsewavex.width],a
+  ex de,hl
+  ld l,0                      ;         pw_state = pw_start << 8;
+  ld h,a
+  ld [pw_state.addr],hl
+
+  ld a,[.pw_nc_smc]           ;       if (pw_decr) {
+  cp _jrnc
+  jq nz,.not_pw_decr
+
+  ld a,pw_lower + $80
+  ld [pw_other_bound.addr],a
+  ld a,pw_upper + $80
+  ld [pw_now_bound.addr],a
+
+  ld a,_jrc                   ;         pw_decr = false;
+  ld [.pw_nc_smc],a
+  xor _jrc xor _jrnc
+  ld [.pw_c_smc],a
+
+  ld hl,[pw_change.addr]
+  xor a
+  sub l
+  ld l,a
+  sbc a,a
+  sub h
+  ld h,a
+  ld [pw_change.addr],hl
+
+.not_pw_decr:                 ;       }
+  ex de,hl
+.no_set_pw_start:

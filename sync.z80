@@ -63,8 +63,8 @@ sync:
 assert ($ shr 8) = (.patches shr 8)
 
 .patches.0.0:
-  db 4
-; ld hl,$0000
+  db 7
+  ld hl,$0000
   ex de,hl
   add ix,de
   ex de,hl
@@ -88,8 +88,8 @@ assert ($ shr 8) = (.patches shr 8)
   ld iyh,a
 
 .patches.1.1:
-  db 4
-; ld hl,$0000
+  db 7
+  ld hl,$0000
   ex de,hl
   add iy,de
   ex de,hl
@@ -111,7 +111,9 @@ assert ($ shr 8) = (.patches shr 8)
   ld b,iyh
 
 .patches.2.2:
-  db 2
+  db 6
+  ld hl,$0000
+  add hl,bc
   ld c,l
   ld b,h
 
@@ -132,6 +134,7 @@ assert ($ shr 8) = (.patches shr 8)
   ld d,b
 
 .patches.3.3:
-  db 2
+  db 5
+  ld hl,$0000
   add hl,de
   ex de,hl

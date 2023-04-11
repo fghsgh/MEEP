@@ -1,0 +1,20 @@
+; same code as general_parse_command.z80 but with a different LUT
+  inc hl                      ;       switch (*bass_pointer++) {
+  ex de,hl
+  ld hl,.read_next_note
+  push hl
+  ld b,a
+  ld a,c
+  rrca
+  rrca
+  rrca
+  ld c,a
+  ld hl,.switch_cases
+  add hl,bc
+  ld a,[hl]
+  inc hl
+  ld h,[hl]
+  ld l,a
+  xor a
+  jp hl
+

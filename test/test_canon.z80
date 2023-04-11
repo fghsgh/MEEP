@@ -4,7 +4,7 @@ include "../tiformat.inc"
 include "../ti83plus.inc"
 format ti executable "A"
 
-include "../ram.z80"
+include "../const.z80"
 
 include "init_driver.z80"
 

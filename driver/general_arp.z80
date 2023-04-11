@@ -1,0 +1,30 @@
+; advances the arpeggio
+; inputs: none
+; outputs: none
+; destroys: AF, C, HL
+
+  ld a,arp_delay              ;   if (!--arp_delay) {
+  dec a
+  jq nz,.arp_delayed
+
+  ld hl,arp_current           ;     channel.freq = decode_note(arp_current++);
+  ld c,[hl]
+  inc hl
+
+  ld a,arp_count              ;     if (!--arp_count) {
+  dec a
+  jq nz,.no_arp_repeat
+  ld hl,arp_start             ;       arp_current = arp_start;
+  ld a,arp_count_reset        ;       arp_count = arp_count_reset;
+.no_arp_repeat:               ;     }
+  ld [arp_count.addr],a
+
+  ld [arp_current.addr],hl    ;     channel.freq = decode_note(arp_current++);
+  call decode_note
+  ld [pulsewavex.freq],hl
+
+  ld a,arp_delay_reset        ;     arp_delay = arp_delay_reset;
+.arp_delayed:                 ;   }
+  ld [arp_delay.addr],a
+  jq ch_driver.next           ; } else {
+

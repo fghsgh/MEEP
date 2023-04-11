@@ -1,0 +1,41 @@
+; defines a bunch of local variables using smcable macros
+
+; parameters of the current oscillator
+pulsewavex := relocate_w + waves_ram
+pulsewavex.freq := pulsewavex + pulsewave.freq + 40
+pulsewavex.width := pulsewavex + pulsewave.width
+pulsewavex.mask := pulsewavex + pulsewave.mask
+
+smcable channel_pointer,      channel_pointer.addr                ; word; pointer to the next note/command to be played
+smcable note_len,             note_len.addr,                1     ; byte; decrementing counter for note length
+smcable rest_len,             rest_len.addr,                1     ; byte; decrementing counter for subsequent rest length
+
+smcable note_len_type,        note_len_type.addr,           1     ; byte; 0 = max length, 1 = constant gap, 2 = fractional
+smcable note_len_argument,    note_len_argument.addr,       0     ; byte; changes meaning depending on note length
+smcable mask,                 mask.addr,                    $03   ; byte; bit 0 = left, bit 1 = right
+smcable global_mask,          global_mask.addr,             $03   ; byte; used by the global mute function
+
+smcable pw_state,             pw_state.addr                       ; word; holds the current pulse width as it is being modulated
+smcable pw_change,            pw_change.addr                      ; word; value added to the pulse width every frame (gets inverted instead of subtracting)
+smcable pw_other_bound,       pw_other_bound.addr,          $80   ; byte; used to store the other boundary while it isn't being checked
+smcable pw_now_bound,         pw_now_bound.addr,            $80   ; byte; used to store the MSB of the current boundary after which PWM will change direction
+smcable pw_start,             pw_start.addr,                $80   ; byte; value pw_state gets set to when a new note starts
+smcable pw_lower,             pw_lower.addr,                $80   ; byte; used to swap pw_other_bound and pw_now_bound around if needed
+smcable pw_upper,             pw_upper.addr,                $80   ; byte; same
+
+smcable arp_start,            arp_start.addr                      ; word; pointer to the start of the sequence of notes that are part of the current arpeggio
+smcable arp_current,          arp_current.addr                    ; word; pointer to the current note of the arpeggio sequence
+smcable arp_count,            arp_count.addr,               1     ; byte; decrementing counter to repeat the arpeggio sequence at the end
+smcable arp_count_reset,      arp_count_reset.addr,         1     ; byte; total length of the arpeggio sequence (so, the value arp_count gets reset)
+smcable arp_delay,            arp_delay.addr,               1     ; byte: decrementing counter for the length of time each note of the arpeggio is played for
+smcable arp_delay_reset,      arp_delay_reset.addr          0     ; byte: the length of time each note of the arpeggio is played for (so the value arp_delay gets reset to)
+
+smcable vib_state,            vib_state.addr                      ; word; holds the current frequency as it is being modulated
+smcable vib_change,           vib_change.addr                     ; word: holds the value that is added to or subtracted from vib_state each frame
+smcable vib_other_bound,      vib_other_bound.addr                ; word: like pw_other_bound but 16-bit
+smcable vib_now_bound,        vib_now_bound.addr                  ; word: like pw_now_bound
+smcable vib_delay,            vib_delay.addr                      ; byte; decrementing counter for the number of frames before the vibrate effect takes effect
+smcable vib_delay_reset,      vib_delay_reset.addr                ; byte: number of frames before the vibrate effect takes effect (so, the value vib_delay gets reset to)
+smcable vib_diff,             vib_diff.addr                       ; byte: factor to configure wideness of vibrato
+smcable vib_speed,            vib_speed.addr                      ; byte: factor to configure speed of vibrato
+

@@ -1,0 +1,54 @@
+; inputs: none
+; outputs: none
+; destroys: AF, BC, DE, HL
+
+  ld hl,pw_state              ; if (pw_decr)
+  ld bc,pw_change             ;   pw_state -= pw_change;
+                              ; else
+  add hl,bc                   ;   pw_state += pw_change;
+  ld a,pw_now_bound + $80
+.pw_nc_smc:
+  jr c,.pw_wraparound         ; if (carry || pw_decr ? pw_state < pw_now_bound : pw_state > pw_now_bound) {
+  cp h
+.pw_c_smc:
+  jr nc,.pw_no_wraparound
+.pw_wraparound:
+  ld d,a
+
+; the following lines are swapped around a bit for speed (and also for confusion)
+                              ;   pw_state = 2 * pw_now_bound - pw_state;
+                              ;   swap(pw_now_bound,pw_other_bound);
+; first part of the swap
+  ld a,pw_other_bound + $80
+  ld [pw_now_bound.addr],a
+; first part of the wraparound
+  xor a
+  sub l
+  ld e,a
+; second part of the swap
+  ld a,d
+  ld [pw_other_bound.addr],a
+; second part of the wraparound
+  ccf
+  adc a,a
+  sub h
+  ld d,a
+
+  xor a
+  sub c
+  ld l,a
+  sbc a,b
+  sub l
+  ld h,a
+  ld [pw_change.addr],hl
+  ex de,hl
+
+  ld a,[.pw_nc_smc]           ;   pw_decr = !pw_decr;
+  ld [.pw_c_smc],a
+  xor _jrc xor _jrnc
+  ld [.pw_nc_smc],a
+.pw_no_wraparound:            ; }
+  ld [pw_state.addr],hl
+  ld a,h                      ; channel.pw = pw_state >> 8;
+  ld [pulsewavex.width],a
+

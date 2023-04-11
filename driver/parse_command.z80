@@ -1,0 +1,23 @@
+; value of HL will end up in DE
+; C contains index<<4 into array of words at (switch_cases) (other bits are guaranteed zero)
+; A contains zero (which a lot of commands make use of)
+                              ;       switch (*channel_pointer++) {
+  inc hl
+  ex de,hl                    ; put channel_pointer into DE
+  ld hl,.read_next_note       ; return address
+  push hl
+  ld b,a                      ; b = 0
+  ld a,c                      ; c = c >> 3
+  rrca                        ; (already guaranteed bottom 4 bits are 0)
+  rrca                        ; (also, it's actually c >> 4 << 1 because word size)
+  rrca
+  ld c,a
+  ld hl,.switch_cases         ; get the word from the table
+  add hl,bc
+  ld a,[hl]
+  inc hl
+  ld h,[hl]
+  ld l,a
+  xor a                       ; many of the routines expect a = 0
+  jp hl                       ; go
+

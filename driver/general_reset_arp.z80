@@ -1,0 +1,18 @@
+; sets the start of the arpeggio and its length, and advances the channel pointer to just after it
+; inputs:
+;  A: 0
+;  HL: channel pointer
+; outputs:
+;  HL: channel pointer
+; destroys: AF, DE
+
+  ld d,a
+  ld [arp_start.addr],hl      ;         arp_start = arp_current = channel_pointer;
+  ld [arp_current.addr],hl
+  ld a,1                      ;         arp_delay = 1;
+  ld [arp_delay.addr],a ; make it read a new note immediately
+  ld a,[arp_count_reset.addr] ;         arp_count = arp_count_reset;
+  ld [arp_count.addr],a
+  ld e,a                      ;         channel_pointer += arp_count_reset;
+  add hl,de
+

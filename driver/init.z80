@@ -1,0 +1,102 @@
+macro driver_init
+  local driver_init_c
+
+driver_init_c:
+  ld ixl,4                    ; repeat 4 times; one for each general-purpose channel
+  ld de,driver_ram            ; DE holds the current pointer address
+
+.loop:
+  ld a,ixl
+  cp 2
+  jq nz,.not_middle_insert_drum
+
+  ld hl,drumbass
+  ld bc,drumbass.size
+  ldir
+.not_middle_insert_drum:
+
+  push de                     ; DE will be destroyed
+
+  ld hl,ch_driver
+  ld bc,ch_driver.size
+  ldir
+
+  pop bc                      ; get the start of the channel back (into BC), and store the end of the channel
+  push de
+  ld ixh,relocate_a.len       ; iterate over relocate_a
+  ld hl,relocate_a.table
+.relocate_a_loop:
+  ld e,[hl]                   ; read the offset from the table
+  inc hl                      ; and advance pointer
+  ld d,[hl]
+  inc hl
+  ex de,hl
+  add hl,bc                   ; calculate word address
+
+  ld a,c                      ; add offset to word
+  add a,[hl]
+  ld [hl],a
+  inc hl
+  ld a,b
+  adc a,[hl]
+  ld [hl],a
+
+  dec ixh                     ; repeat
+  ex de,hl
+  jq nz,.relocate_a_loop
+
+
+  ld a,4                      ; get the iterator as 0-3 (instead of 4-1)
+  sub ixl
+  add a,a                     ; multiply by 20 (size of general-purpose pulsewave bitbang routine)
+  add a,a
+  ld e,a
+  add a,a
+  add a,a
+  add a,e
+  ld iyl,a                    ; keep in IYL
+
+  ld ixh,relocate_w.len       ; iterate over relocate_w
+  ld hl,relocate_w.table
+.relocate_w_loop:
+  ld e,[hl]                   ; read address from table
+  inc hl
+  ld d,[hl]
+  inc hl
+  ex de,hl
+  add hl,bc
+  ld a,[hl]
+  add a,iyl
+  cp $50
+  jq c,.not_looparound
+  sub $50
+.not_looparound:
+  cp (pulsewave3.freq - 1) and $00ff
+  jq nz,.not_pulsewave3freq
+  inc a
+.not_pulsewave3freq:
+  ld [hl],a
+  ex de,hl
+  dec ixh
+  jq nz,.relocate_w_loop
+
+  dec ixl
+  pop de
+  jq nz,.loop
+
+
+  ld hl,drumlcd
+  ld bc,drumlcd.size
+  ldir
+
+
+  ld hl,$da00
+  xor a
+.zero_counters_loop:
+  ld [hl],a
+  inc l
+  jq nz,.zero_counters_loop
+
+  ld a,6
+  ld [channels_playing],a
+end macro

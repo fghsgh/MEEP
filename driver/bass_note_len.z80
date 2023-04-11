@@ -1,0 +1,50 @@
+
+  ld a,bass_note_len_arg
+  ld b,bass_note_len_type
+  djnz .not_subtractive
+.subtractive:
+  cp c
+  jq c,.subtract_len
+.full_len:
+  ld a,1
+  ld [bass_rest_len.addr],a
+  ld a,c
+  ld [bass_len.addr],a
+  jq .done_len
+
+.subtract_len:
+  ld b,a
+  inc a
+  ld [bass_rest_len.addr],a
+  ld a,c
+  sub b
+  ld [bass_len.addr],a
+  jq .done_len
+
+.not_subtractive:
+  djnz .not_fractional
+.fractional:
+  push de
+  ld e,c
+  ld h,a
+  call e_mul_h
+  ld a,c
+  sub h
+  inc a
+  ld [bass_rest_len.addr],a
+  ld a,h
+  ld [bass_len.addr],a
+  pop de
+  jq .done_len
+
+.not_fractional:
+.additive:
+  cp c
+  jq nc,.full_len
+  ld b,a
+  ld [bass_len.addr],a
+  ld a,c
+  sub b
+  inc a
+  ld [bass_rest_len.addr],a
+  ld a,b

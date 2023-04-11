@@ -1,0 +1,17 @@
+
+smcable bass_len,             bass_len.addr,                1     ; byte; note length
+smcable bass_rest_len,        bass_rest_len.addr,           1     ; byte; rest length
+smcable bass_mask,            bass_mask.addr                      ; byte
+smcable bass_globalmask,      bass_globalmask.addr,         3     ; byte; used by the global per-channel mute function
+smcable bass_outmask,         bass_outmask.addr                   ; byte; mask value the bass driver wants to output unless the drum driver takes precedence
+smcable bass_outlen,          bass_outlen.addr                    ; byte; wavelength value the bass driver wants to output
+smcable bass_arp_delay,       bass_arp_delay.addr,          1     ; byte; number of frames before advancement to the next arp note
+smcable bass_arp_delay_reset, bass_arp_delay_reset.addr,    1     ; byte; time between notes of the arp
+smcable bass_pointer,         bass_pointer.addr                   ; word; channel pointer for bass
+smcable bass_arp_current,     bass_arp_current.addr               ; pointer to the currently being played note of the arp
+smcable bass_arp_start,       bass_arp_start.addr
+smcable bass_arp_count,       bass_arp_count.addr,          1
+smcable bass_arp_count_reset, bass_arp_count_reset.addr,    1
+smcable bass_note_len_arg,    bass_note_len_arg.addr,       0
+smcable bass_note_len_type,   bass_note_len_type.addr,      1
+

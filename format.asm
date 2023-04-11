@@ -11,8 +11,8 @@ format ti appvar
   dw ch0,ch1,ch2,ch3,drum,bass ; pointers to the start of all channels
 
 ; general-purpose pulsewave channels:
-; note: $XY,L where L is the note length, Y is the (standard MIDI) octave (X >= 1) and X is the note (0 -> C, B -> B), notes higher than B are undefined but could be set to up to 16-TET with few modifications to the source
-;   e.g. C3 is $03, A#5 is $A5
+; note: $XY,L where L is the note length, Y is the (standard MIDI, with offset 2) octave (must be >= 1, (so MIDI octave -1)) and X is the note (0 -> C, B -> B), notes higher than B are undefined but could be set to up to 16-TET with a few modifications to the source
+;   e.g. C3 is $05, A#5 is $A7
 ;   more notes can be put between $XY and L for arpeggios (see command $70)
 ; rest: $80,L where L is the rest length
 ; command: $X0 where X is command, optionally with arguments in the following byte(s) (depending on command type)
@@ -26,10 +26,10 @@ format ti appvar
 ;               an attempt is made at handling overflows
 ;  $10: set mask
 ;    1 byte = the mask to set (bit 0 = left, bit 1 = right, other bits ignored)
-;  $20: set note length to additive (each note will end after exactly X frames, and will remain silent until the next note starts) (this cancels $07)
+;  $20: set note length to ("max length") additive (each note will end after exactly X frames, and will remain silent until the next note starts) (this cancels $07)
 ;    1 byte = the note length to set (in frames)
 ;               for notes which are shorter than the additive note length, their length overrides the default one
-;  $30: set note length to subtractive (each note will end X frames before the next one starts) (this cancels $06)
+;  $30: set note length to ("constant gap") subtractive (each note will end X frames before the next one starts) (this cancels $06)
 ;    1 byte = the note length to set (in frames), default $00
 ;               notes shorter than the subtractive note length will not be played (will be replaced by rests)
 ;  $40: set note length to fractional (each note will play for a set % of time of the note's length)
@@ -70,9 +70,9 @@ format ti appvar
 ;    1 byte = channel to sync to
 ;    this will stop this channel's oscillator and continuously sync it to the given channel
 ;    the given channel number can be in the range 0-3
-;    this will have the effect that two channels will always play the same note (although they can still have a separate pulse width, mask, and timings)
-;    set a channel's sync to itself to give it its oscillator back
-;    note: syncing channels like this actually frees up CPU time
+;    this will have the effect that two channels will always play the same frequency and will always be in phase (although they can still have a separate pulse width, mask, and timings)
+;    set a channel's sync to itself to give it its own oscillator back
+;    note: syncing channels like this actually frees up a lot of CPU time, so consider using this for all your general-purpose channels which are currently not playing anything
 ;  $d0: reserved (as of now, does nothing)
 ;  $e0: end of this channel (stop playing notes in this channel, still continue all other channels)
 ;  $f0: end of the song (finish all channels immediately)
@@ -92,7 +92,7 @@ ch0:
 ch1:
   db $00,$80
   db $04,$03
-  db $ff,50	; rest
+  db $80,50	; rest
   db $43,200	; Eb4
   db $44,100	; E4
   db $0f
@@ -128,5 +128,22 @@ drum:
 bass:
 ; bass channel:
 ;   note that the bass channel will be muted if the drum channel is playing, as they're played on the same bitbang channel
-;   the format is the same as for general-purpose pulse wave channels, except pwm and vibrato/glissando don't work, and only commands $00-$40,$70-$b0,$e0-$f0 work
-;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount, but not exactly the same, which can lead to phasing effects; however, there should be no aliasing artifacts (unlike on the general-purpose channels for high notes)
+;   the format is the same as for general-purpose pulse wave channels, except vibrato/glissando don't work, and only commands $00-$40,$70-$b0,$e0-$f0 work
+;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount, but not exactly the same, which can lead to phasing effects; however, there are no aliasing artifacts (unlike on the general-purpose channels for high notes)
+;
+; the pwm command works differently
+;   the format is $00,<start>,<firstshift>,<nextshifts>,<delay>
+;   the bass channel's bitbang ISR will decrement its wavelength counter, and if it hits zero, play the next bit of the <start> value (left rotating it)
+;   therefore, <start> is an 8-bit value where each bit represents either low or high (low being 1, high being 0)
+;   the bass channel's driver can add one bit, or remove one bit, by doing the operations `a | rotl(a,1)` and `a & rotl(a,1)`
+;   the delay in frames between these operations is given by <delay>
+;   <firstshift> is the number of bits to be added before it begins removing bits
+;   <nextshifts> is the number of bits to be added/removed before it switches to the other operation again
+;   setting <delay> to 0 will not change the pulse width at all
+;   <firstshift> being 0 is handled (will immediately start removing bits), <nextshifts> is not (unless <delay> is 0)
+; examples:
+;   $00,$f0,0,0,0: 50%, no pwm (this is the default)
+;   $00,$f0,3,6,4: pwm between 12.5% and 87.5%, starting at 50%, with one oscillation per second (4 = 50 Hz / (6 * 2 steps))
+;   $00,$aa,0,0,0: play 2 octaves higher, no pwm
+;   $00,$cc,0,2,6: play 1 octave higher, pwm between 25% and 75%, starting at 75%, with two oscillations per second (6 = 50 Hz / (2 * 2 steps) / 2)
+; the drum channel will copy this pulse width

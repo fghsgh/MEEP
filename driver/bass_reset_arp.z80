@@ -1,0 +1,15 @@
+; inputs:
+;  D: 0
+;  HL: channel pointer
+; outputs:
+;  HL: channel pointer
+; destroys: AF, E
+
+  ld [bass_arp_start.addr],hl ;       bass_arp_start = bass_arp_current = bass_pointer;
+  ld [bass_arp_current.addr],hl
+  ld a,1                      ;       bass_arp_delay = 1;
+  ld [bass_arp_delay.addr],a ; make it read a new note immediately
+  ld a,[bass_arp_count_reset.addr] ;  bass_arp_count = bass_arp_count_reset;
+  ld [bass_arp_count.addr],a
+  ld e,a
+  add hl,de

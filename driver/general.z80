@@ -1,0 +1,74 @@
+include "general_smcable.z80"
+
+general_driver:
+  ld a,note_len               ; if (!--note_len) {
+  dec a
+  jq nz,.play_note_normal
+                              ;   note_len = 1;
+  ld a,rest_len               ;   if (!--rest_len) {
+  dec a
+  jq z,.rest_done
+
+  ld [rest_len.addr],a
+  xor a
+  ld [pulsewavex.mask],a      ;   channel.mask = 0x00;
+  jq .next
+
+.rest_done:
+  ld hl,channel_pointer
+.read_next_note:
+  ld a,[hl]                   ;     if (*channel_pointer & 0x0f) {
+  ld c,a
+  and $0f
+  jq z,.parse_command
+  include "general_reset_pwm.z80"
+  ld a,[.do_arp_jr_smc]       ;       if (do_arp) {
+  sub _cp
+  jq nz,.not_arp_set
+  include "general_reset_arp.z80"
+  jq .after_vib_set           ;       } else {
+.not_arp_set:
+  include "general_reset_vib.z80"
+.after_vib_set:               ;       }
+
+  ld c,[hl]                   ;       {note_len,rest_len} = do_note_len(*channel_pointer++);
+  inc hl
+  ld [channel_pointer.addr],hl
+  call do_note_len
+
+  ld a,mask                   ;       channel.mask = mask;
+  and global_mask      
+  ld [pulsewavex.mask],a
+  jq .after_read_note
+
+.parse_command:
+  include "parse_command.z80"
+  include "general_commands.z80"
+
+.play_note_normal:
+  ld [note_len.addr],a
+
+.after_read_note:             ; }
+; advance channel state to next frame
+  include "general_pwm.z80"
+; smc between JR and CP to choose arp or vib
+.do_arp_jr_smc:
+  assert (.do_vib - ($ + 2)) <= 127
+  cp .do_vib - ($ + 2)        ; if (do_arp) {
+  include "general_arp.z80"
+  jq .next                    ; } else {
+
+.do_vib:
+  ld a,vib_delay + 1          ;   if (!--vib_delay) {
+  dec a
+  jq nz,.vib_delayed
+  include "general_vib.z80"
+
+  jq .next                    ; }
+
+include "general_note_len.z80"
+
+general_driver.vib_delayed:
+  ld [vib_delay.addr],a       ;   }
+
+general_driver.next:

@@ -1,0 +1,60 @@
+
+.switch_cases:
+  dw cmd_nothing,.cmd_mask,.cmd_additive,.cmd_subtractive
+  dw .cmd_fractional,cmd_nothing,cmd_nothing,.cmd_arpeggio
+  dw .cmd_rest,cmd_jump,cmd_djnz,cmd_table_value
+  dw cmd_set_phase,cmd_nothing,.cmd_finish,cmd_exit
+
+.cmd_mask:                    ;         case 0x10:
+  ex de,hl
+  ld a,[hl]                   ;           mask = *bass_pointer++;
+  inc hl
+  ld [bass_mask.addr],a
+  ret                         ;           break;
+
+.cmd_fractional:              ;         case 0x40:
+  inc a                       ;           note_len_type = FRACTIONAL;
+.cmd_subtractive:             ;         case 0x30:
+  inc a                       ;           note_len_type = SUBTRACTIVE;
+.cmd_additive:                ;         case 0x20:
+  ld [bass_note_len_type.addr],a ;        note_len_type = ADDITIVE;
+  ex de,hl
+  ld a,[hl]                   ;           note_len_argument = *bass_pointer++;
+  inc hl
+  ld [bass_note_len_arg.addr],a
+  ret                         ;           break;
+
+.cmd_arpeggio:                ;         case 0x70:
+  ex de,hl
+  ld a,[hl]                   ;           bass_arp_count_reset = *bass_pointer++;
+  inc hl
+  ld [bass_arp_count_reset.addr],a
+  ld a,[hl]                   ;           bass_arp_delay_reset = *bass_pointer++;
+  inc hl
+  ld [bass_arp_delay_reset.addr],a
+  ret                         ;           break;
+
+.cmd_rest:                    ;         case 0x80:
+  ld [bass_outmask.addr],a    ;           bass.out.mask = 0;
+  ex de,hl
+  ld a,[hl]                   ;           bass_rest_len = *bass_pointer++ + 1;
+  inc hl
+  inc a
+  ld [bass_rest_len.addr],a
+  ret                         ;           break;
+
+.cmd_finish:                  ;         case 0xe0:
+  pop hl
+  ld hl,channels_playing      ;           playing--;
+  dec [hl]
+  ret z
+
+  ld [bass_outmask.addr],a    ;           bass.out.mask = 0;
+
+  ld a,_jp
+  ld [bass],a
+  ld hl,.finish_bass
+  ld [bass + 1],hl
+; jp hl                       ;           return;
+  assert $ = .finish_bass     ; falls through
+

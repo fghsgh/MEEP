@@ -16,12 +16,13 @@ tunings:
 ;   5 * 176 = number of clock cycles per effective sample (the 5 multiplier is because there are 5 channels of 176cc each)
 ;   round() should round to the nearest whole number
 ; if any of these are too big for 16-bit, then your clock speed is too low, see below for a possible fix
+; (seriously though? your clock speed is less than 13.9078 MHz?)
   dw $739C,$7A7C,$81C4,$897C,$91A9,$9A52,$A37F,$AD38,$B785,$C26E,$CDFE,$DA3E
 ; FOR BASS CHANNEL
-; set these to `round(1 / (2^((n - 69) / 12) * 440) * (freq / (5 * 176)) / 2)` with
-;   n = 36..42, then 31..35 (MIDI codes for C2..F#2, G1..B1)
+; set these to `round(1 / (2^((n - 69) / 12) * 440) * (freq / (5 * 176)) / 8)` with
+;   n = 12..18, then 7..11 (MIDI codes for C0..F#0, G-1..B-1)
 ;   69, 12, 440, (freq / (5 * 176)) = same as above
-;   2 = because we're only counting half the wavelength, not all of it
+;   8 = because there are 8 segments that can be output
 ;   round() should round to the nearest whole number
 ; if any of these are too big for 8-bit, then your clock speed is too high, see below for a fix
   db $8E,$86,$7E,$77,$70,$6A,$64,$BD,$B3,$A9,$9F,$96
@@ -60,7 +61,15 @@ measure_cpu:
   jq driver_ram
 
 tunings:
-  
+repeat 12, i:120
+  ; round(2^((n - 69) / 12) * 440 * 65536 / ((freq/2)*2 / (5 * (176))) * 256)
+  emit trunc(1.0594630943592952645618252949463417007792043174941856285592 shl (i - 43) * 275 + .5):5
+end repeat
+iterate <count,start>, 9,12, 3,7
+  repeat count, i:start
+    emit 
+  end repeat
+end iterate
 
 .starttmr:
   ld a,$03

@@ -1,0 +1,65 @@
+include "bass_smcable.z80"
+
+bass:
+  ld a,bass_len + 1           ; if (!--bass_len)
+  dec a
+  jq nz,.playing
+                              ;   bass_len = 1;
+  ld a,bass_rest_len + 1      ;   if (!--bass_rest_len) {
+  dec a
+  jq z,.rest_done
+
+  ld [bass_rest_len.addr],a
+  xor  a
+  ld [bass_outmask.addr],a    ;   (else) bass.out.mask = 0x00;
+  jq .resting
+
+.rest_done
+  ld hl,bass_pointer          ;     if (*bass_pointer & 0x0f) {
+.read_next_note:
+  ld a,[hl]
+  ld c,a
+  and $0f
+  jq z,.parse_command
+  include "bass_reset_pwm.z80"
+  include "bass_reset_arp.z80"
+
+  ld a,bass_mask              ;       bass.out.mask = bass_mask & bass_globalmask;
+  and bass_globalmask + $03
+  ld [bass_outmask.addr],a
+  add a,l                     ;       bass_pointer += bass_arp_count_reset;
+  ld l,a
+  adc a,h
+  sub l
+  ld h,a
+  ld c,[hl]                   ;       {bass_len,bass_rest_len} = do_note_len(*bass_pointer++);
+  inc hl
+  ld [bass_pointer.addr],hl
+
+.do_note_len:
+  include "bass_note_len.z80"
+.done_len:                    ;     } else {
+                              ;       (later)
+.done_read:                   ;     }
+                              ;   }
+.playing:                     ; }
+  include "bass_pwm.z80"
+  include "bass_arp.z80"
+.resting:
+  scf                         ; if (!mute_bass) {
+.smc_mute_c:
+  jq nc,.mute_bass
+
+  ld a,bass_outlen            ;   bass.wavelength = bass.out.length;
+  ld [basswave.length],a
+  ld a,bass_outmask           ;   bass.mask = bass.out.mask;
+  ld [basswave.mask],a
+  jq .finish_bass
+
+
+.parse_command:
+  include "parse_command.z80"
+  include "bass_commands.z80"
+
+.mute_bass:
+.finish_bass:

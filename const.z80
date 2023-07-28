@@ -1,35 +1,41 @@
 waves_ram := $c000 ; bitbang wave generators
+assert waves_ram + waves.size <= general_tuning
 general_tuning := $c099 ; tunings of general-purpose channels
+assert general_tuning + 2 * 12 = bass_tuning
 bass_tuning := $c0b1 ; tunings of the bass channels
+assert bass_tuning + 12 = appvar_start
 appvar_start := $c0bd ; start of the appvar (for relative addressing inside it)
+assert appvar_start + 2 = channels_playing
 channels_playing := $c0bf ; the number of channels that are still playing (a $e0 command decrements this and exits if it hits 0)
+assert channels_playing + 1 = interrupt_ram
 interrupt_ram := $c0c0 ; start of the interrupt routine
+assert interrupt_ram + interrupt.size <= djnz_counters_ram
 djnz_counters_ram := $c100 ; 256 counters for $a0 and $b0 commands
-font := $c200 ; 3x3 font, decompressed
-score := $c240 ; score stored as a 6-digit BCD number
-streak := $c243 ; streak counter as a 4-digit BCD number
-interrupt_table_ram := $c300 ; 257 $c0 bytes
-driver_ram := $c401 ; start of the drivers
-ram2_safe := $da7e ; start of saferam on ram page 2
+;font := $c200 ; 3x3 font, decompressed
+;score := $c240 ; score stored as a 6-digit BCD number
+;streak := $c243 ; streak counter as a 4-digit BCD number
+interrupt_table_ram := $c200 ; 257 $c0 bytes
+driver_ram := $c301 ; start of the drivers
+ram2_safe := $da7e ; start of saferam on ram page 2 (writing before this will cause a reset if the user scrolls up on the homescreen on mathprint OSes)
 
 ; some instructions used for SMC purposes
 virtual
+load _adc:1 from $+1
   adc hl,de
-load _adc:1 from $-1
+load _sbc:1 from $+1
   sbc hl,de
-load _sbc:1 from $-1
+load _jrc:1 from $
   jr c,$
-load _jrc:1 from $-2
+load _jrnc:1 from $
   jr nc,$
-load _jrnc:1 from $-2
 assert _adc xor _jrnc = _sbc xor _jrc
+load _ldhl:1 from $
   ld hl,0
-load _ldhl:1 from $-3
+load _jp:1 from $
   jp 0
-load _jp:1 from $-3
+load _jr:1 from $
   jr $
-load _jr:1 from $-2
+load _cp:1 from $
   cp 0
-load _cp:1 from $-2
 end virtual
 

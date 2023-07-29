@@ -1,0 +1,28 @@
+
+  ld a,bass_arp_delay         ; if (!--bass_arp_delay) {
+  dec a
+  jq nz,.bass_arp_delayed
+
+  ld a,bass_arp_count         ;   if (!--bass_arp_count) {
+  dec a
+  jq nz,.bass_arp_next
+
+  ld hl,bass_arp_start        ;     bass_arp_current = bass_arp_start;
+  ld [bass_arp_current.addr],hl
+
+  ld a,bass_arp_count_reset   ;   bass_arp_count = bass_arp_count_reset;
+.bass_arp_next:               ;   }
+  ld [bass_arp_count.addr],a
+
+  ld a,bass_arp_delay_reset   ; bass_arp_delay = bass_arp_delay_reset;
+.bass_arp_delayed:            ; }
+  ld [bass_arp_delay.addr],a
+
+
+  ld hl,bass_arp_current      ; bass_arp_current++;
+  ld b,[hl]
+  inc hl
+  ld [bass_arp_current.addr],hl
+
+  decode_note_bass            ;   bass.wavelength = bass_decode_note(bass_arp_current);
+  ld [bass_outlen.addr],a

@@ -1,3 +1,5 @@
+; included in multiple places
+
 ; value of HL will end up in DE
 ; C contains index<<4 into array of words at (switch_cases) (other bits are guaranteed zero)
 ; A contains zero (which a lot of commands make use of)

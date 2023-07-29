@@ -1,0 +1,224 @@
+syncroutines:
+  dw ch0sync
+  db ch0sync.size
+  dw ch1sync
+  db ch1sync.size
+  dw ch2sync
+  db ch2sync.size
+  dw ch3sync
+  db ch3sync.size
+  assert $ and $ff00 = syncroutines and $ff00
+
+freqsmc.table:
+relocatable freqsmc,freqsmc.len,relocatable_a
+
+macro syncmacro n*
+repeat 1,f:(n+2) mod 4
+ch#n#sync:
+virtual at driver#n#_ram + ch_driver.size
+smcable .editfreq,.editfreq.addr
+smcable .freq,freq.addr,pulsewave#f.freq
+
+  ld a,[hl]                   ; read what channel to sync to
+  inc hl
+  push hl                     ; keep channel pointer for later
+  ld hl,[.freq]               ; preserve old frequency
+  push hl
+
+if n > 0                      ; get patching data
+  ld e,a                      ; these conditionals multiply A by {8,7,9,9}
+end if
+  add a,a
+  add a,a
+  add a,a
+if n = 1
+  sub e
+else if n >= 2
+  add a,e
+end if
+  add a,.patchdata and $00ff
+  ld l,a                      ; apply the patch
+  ld h,.patchdata shr 8
+if n < 2
+  ld de,pulsewave#n
+else
+  ld de,pulsewave#n - 1
+end if
+  ld bc,.patchsize
+  di
+  ldir
+
+  sub a,(.patchdata + 8) and $00ff ; figure out again what A was before the LDIR and stuff
+  cp 2 * .patchsize           ; if we synced to one of the later two channels, offset by 1
+  ld a,b                      ; B = 0
+  adc a,pulsewave#n
+if n = 0                      ; set previous channel to jump to the start
+  ld [noisewave.next],a
+  ld [basswave.next],a
+else
+repeat 1,m:n-1
+  ld [pulsewave#m.next],a
+end repeat
+end if
+  inc a                       ; frequency word
+  ld l,a                      ; restore the frequency we pushed earlier
+  ld h,pulsewave#f.freq
+  pop de
+  ld [hl],e
+  inc l
+  ei                          ; interrupt can start after the next instruction
+  ld [hl],d
+
+  ld [.editfreq.addr],a
+  ld [.freq.addr],a
+
+  ld hl,freqsmc.table
+  ld bc,driver#f_ram
+  ld a,freqsmc.len
+
+.loop:
+  ld e,[hl]
+  inc hl
+  ld d,[hl]
+  inc hl
+  ex de,hl
+  add hl,bc
+  ld [hl],.editfreq
+  ex de,hl
+  dec a
+  jq nz,.loop
+
+  pop hl
+  ret
+.size := $ - $$
+load .data: .size from $$
+end virtual
+db .data
+end repeat
+end macro
+
+ch0sync.patchdata:
+ch0sync.0:
+  ld hl,0
+  add hl,bc
+  ld c,l
+  ld b,h
+  ld a,ixh
+ch0sync.1:
+  ld hl,0
+  add hl,bc
+  ld c,l
+  ld b,h
+  ld a,iyh
+ch0sync.2:
+  nop
+  ld hl,0
+  add hl,bc
+  ld c,l
+  ld b,h
+  ld a,b
+ch0sync.3:
+  nop
+  ld hl,0
+  add hl,bc
+  ld c,l
+  ld b,h
+  ld a,d
+ch0sync.4:
+ch0sync.patchsize := 8
+
+ch1sync.patchdata:
+ch1sync.0:
+  ld hl,0
+  add hl,de
+  ex de,hl
+  ld a,ixh
+ch1sync.1:
+  ld hl,0
+  add hl,de
+  ex de,hl
+  ld a,iyh
+ch1sync.2:
+  nop
+  ld hl,0
+  add hl,de
+  ex de,hl
+  ld a,b
+ch1sync.3:
+  nop
+  ld hl,0
+  add hl,de
+  ex de,hl
+  ld a,d
+ch1sync.4:
+ch1sync.patchsize := 7
+
+ch2sync.patchdata:
+ch2sync.0:
+  ld hl,0
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,ixh
+ch2sync.1:
+  ld hl,0
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,iyh
+ch2sync.2:
+  nop
+  ld hl,0
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,b
+ch2sync.3:
+  nop
+  ld hl,0
+  ex de,hl
+  add iy,de
+  ex de,hl
+  ld a,d
+ch2sync.4:
+ch2sync.patchsize := 9
+
+ch3sync.patchdata:
+ch3sync.0:
+  ld hl,0
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,ixh
+ch3sync.1:
+  ld hl,0
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,iyh
+ch3sync.2:
+  nop
+  ld hl,0
+  ex de,hl
+  add ix,de
+  ex de,hl
+  ld a,b
+ch3sync.3:
+  nop
+  ld hl,0
+  ex de,hl
+  add iy,de
+  ex de,hl
+  ld a,d
+ch3sync.4:
+ch3sync.patchsize := 9
+
+
+repeat 4,n:0
+  repeat 4,i:0
+    repeat 1,j:i+1
+      assert ch#n#sync.j - ch#n#sync.i = ch#n#sync.patchsize
+    end repeat
+  end repeat
+  assert ch#n#sync.0 and $ff00 = ch#n#sync.3 and $ff00
+end repeat

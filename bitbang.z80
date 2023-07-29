@@ -29,20 +29,23 @@ end virtual
 db .data
 
 repeat 4,i:0
-  smcable pulsewave#i.freq.val, pulsewave#i.freq
+  smcable pulsewave#i.freq.val,  pulsewave#i.freq
   smcable pulsewave#i.width.val, pulsewave#i.width
-  smcable pulsewave#i.mask.val, pulsewave#i.mask
-  smcable pulsewave#i.next.val, pulsewave#i.next
+  smcable pulsewave#i.mask.val,  pulsewave#i.mask
+  smcable pulsewave#i.next.val,  pulsewave#i.next
 end repeat
 
-assert pulsewave0 + $15 = pulsewave1 - 1
-assert pulsewave1 + $15 - 1 = pulsewave2
-assert pulsewave2 + $15 = pulsewave3
-assert pulsewave3 + $15 = noisewave
+pulsewave_chsize := 21
+
+assert pulsewave0 + pulsewave_chsize = pulsewave1 - 1
+assert pulsewave1 + pulsewave_chsize - 1 = pulsewave2
+assert pulsewave2 + pulsewave_chsize = pulsewave3
+assert pulsewave3 + pulsewave_chsize = noisewave
 repeat 3,i:0
+  assert pulsewave#i.freq = pulsewave#i + 1
   repeat 1,j:i+1
     iterate v, width,mask,next
-      assert pulsewave#i.v + $15 = pulsewave#j.v
+      assert pulsewave#i.v + pulsewave_chsize = pulsewave#j.v
     end iterate
   end repeat
 end repeat
@@ -68,6 +71,7 @@ pulsewave0:
 
   nop
 
+  nop
 pulsewave1:
   ld hl,pulsewave3.freq.val
   add hl,de
@@ -83,6 +87,8 @@ pulsewave1:
   exx
   ei
   ret
+
+  nop
 
 pulsewave2:
   ld hl,pulsewave0.freq.val
@@ -100,6 +106,8 @@ pulsewave2:
   exx
   ei
   ret
+
+  nop
 
 pulsewave3:
   ld hl,pulsewave1.freq.val

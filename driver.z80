@@ -5,6 +5,13 @@
 ;   relocate_w are addresses inside the pulsewave bitbang routines (thus depending on the channel)
 ; the drumbass driver, db_driver, is not relocatable, its origin is assumed to be driver_ram + 4 * driver.size
 
+driver0_ram := driver_ram
+driver1_ram := driver0_ram + ch_driver.size + ch0sync.size
+drumbass_ram := driver1_ram + ch_driver.size + ch1sync.size
+driver2_ram := drum0_ram + drum.size
+driver3_ram := driver2_ram + ch_driver.size + ch2sync.size
+drumlcd_ram := driver3_ram + ch_driver.size + ch3sync.size
+
 include "driver/init.z80"
 
 relocate_a.table:
@@ -26,7 +33,7 @@ end repeat
 
 drumbass:
 db drumbass.data
-virtual at driver_ram + 2 * ch_driver.size
+virtual at drumbass_ram
 
 call_drum_1:
   call drum
@@ -39,7 +46,7 @@ end virtual
 
 drumlcd:
 db drumlcd.data
-virtual at driver_ram + 4 * ch_driver.size + drumbass.size
+virtual at drumlcd_ram
 
 call_drum_2:
   call drum
@@ -222,6 +229,7 @@ drumlcd.size := $ - $$
 load drumlcd.data: drumlcd.size from $$
 end virtual
 
+include "driver/sync.z80"
 
 cmd_jump:                     ;         case 0x90:
   ex de,hl

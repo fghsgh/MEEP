@@ -48,12 +48,15 @@ driver_init_c:
 
   ld a,4                      ; get the iterator as 0-3 (instead of 4-1)
   sub ixl
-  add a,a                     ; multiply by 20 (size of general-purpose pulsewave bitbang routine)
-  add a,a
-  ld e,a
-  add a,a
+  ld e,a                      ; multiply by 3
   add a,a
   add a,e
+  ld iyh,a                    ; for later
+  ld e,a                      ; multiply by 7
+  add a,a
+  add a,a
+  add a,a
+  sub a,e
   ld iyl,a                    ; keep in IYL
 
   ld ixh,relocate_w.len       ; iterate over relocate_w
@@ -67,9 +70,9 @@ driver_init_c:
   add hl,bc
   ld a,[hl]
   add a,iyl
-  cp $50
+  cp pulsewave_chsize * 4
   jq c,.not_looparound
-  sub $50
+  sub pulsewave_chsize * 4
 .not_looparound:
   cp (pulsewave3.freq - 1) and $00ff
   jq nz,.not_pulsewave3freq
@@ -80,8 +83,23 @@ driver_init_c:
   dec ixh
   jq nz,.relocate_w_loop
 
-  dec ixl
+  ld a,iyh                    ; get the right sync routine in place here
+  ld hl,syncroutines
+  add a,l
+  ld l,a
+  adc a,h
+  sub l
+  ld h,a
+  ld e,[hl]
+  inc l
+  ld d,[hl]
+  inc l
+  ld c,[hl]
+  ld b,0
   pop de
+  ldir
+
+  dec ixl
   jq nz,.loop
 
 
@@ -90,7 +108,7 @@ driver_init_c:
   ldir
 
 
-  ld hl,$da00
+  ld hl,djnz_counters_ram
   xor a
 .zero_counters_loop:
   ld [hl],a

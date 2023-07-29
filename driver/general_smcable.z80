@@ -1,10 +1,10 @@
 ; defines a bunch of local variables using smcable macros
 
 ; parameters of the current oscillator
-pulsewavex := relocate_w + waves_ram
-pulsewavex.freq := pulsewavex + pulsewave.freq + 40
-pulsewavex.width := pulsewavex + pulsewave.width
-pulsewavex.mask := pulsewavex + pulsewave.mask
+pulsewavex := relocate_w + pulsewave0
+pulsewavex.freq := relocate_w + pulsewave0.freq + freqsmc
+pulsewavex.width := relocate_w + pulsewave0.width
+pulsewavex.mask := relocate_w + pulsewave0.mask
 
 smcable channel_pointer,      channel_pointer.addr                ; word; pointer to the next note/command to be played
 smcable note_len,             note_len.addr,                1     ; byte; decrementing counter for note length

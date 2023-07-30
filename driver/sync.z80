@@ -97,6 +97,11 @@ db .data
 end repeat
 end macro
 
+syncmacro 0
+syncmacro 1
+syncmacro 2
+syncmacro 3
+
 ch0sync.patchdata:
 ch0sync.0:
   ld hl,0

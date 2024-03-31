@@ -83,7 +83,7 @@ macro ?!
   ; the 256 factor is to make it fixed point, because otherwise 32+8-24=16, with no spare bits for precision
   repeat 12, n:120
     exp_float_int semitone,n-69,result
-    emit trunc(result * (440*65536*256*5/2) + .5):5
+    emit trunc(result * (basefreq*(65536*256*5/2)) + .5):5
   end repeat
 .bass_tunings_const:
   iterate <count,start>, 12-bass_lowest_octave_count,12, bass_lowest_octave_count,8
@@ -93,7 +93,7 @@ macro ?!
       ; = (x/y) / (2^((n - 69) / 12) * 440 * 8 * 5/2) * 16777216 / 16777216
       ; = 1 / (2^((n - 69) / 12) * 440 * 8 * 5/2) * 16777216 * (x/y) / 16777216
       exp_float_int semitone,n-69,result
-      emit trunc(16777216 * 440 * 8 * 5/2 / result + .5):2
+      emit trunc((16777216 * 8 * 5/2) * basefreq / result + .5):2
     end repeat
   end iterate
 

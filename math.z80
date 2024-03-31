@@ -1,5 +1,7 @@
 ; this source file contains some math routines
-; mainly: decoding note codes, 8*8 multiplication (for vibrato and fractional note lengths), 16/8 division (for glissando), 32-bit multiplication (for frequency calibration)
+; fast: decoding note codes, 8*8 multiplication (for vibrato and fractional note lengths), 16/8 division (for glissando)
+; small: 24*24, 32*24, 16*32, 24*16, 16/8, 40*8, 40/24 (used by cpuspeed.z80) (not all of them are used anymore, but they're all macros so it doesn't matter)
+; also: fasmg float^integer exponentiation, used in cpuspeed.z80
 
 ; input:
 ;  C: note code ($XY as defined in format.asm) (range is not checked)
@@ -49,7 +51,7 @@ macro decode_note_bass
   rrca
   rrca
   rrca
-  cp 7
+  cp bass_lowest
   jr nc,not_less_rshift
   dec b
 not_less_rshift:
@@ -304,4 +306,175 @@ no_add:
 
   dec a
   jq nz,loop
+end macro
+
+; 24*16 multiplication (25 bytes, 979-1475cc)
+; input:
+;  IYL-DE, HL: operands
+; output:
+;  HL-A-IX
+; destroys:
+;  B=0, F
+macro iylde_mul_hl
+  local loop,no_carry,no_add
+  ld ix,0
+  xor a
+  ld b,16
+loop:
+  add ix,ix
+  rla
+  adc hl,hl
+  jr nc,no_add
+  add ix,de
+  adc a,iyl
+  jr nc,no_carry
+  inc hl
+no_carry:
+no_add:
+  djnz loop
+; adc hl,hl TODO: why tf was this here
+end macro
+
+; 16/8 division (18 bytes, 774-870cc)
+; input:
+;  HL, C
+; output:
+;  HL: result
+;  A: remainder
+; destroys:
+;  B=0,F
+macro hl_div_c
+  local loop,too_big,no_sub
+
+  ld b,16
+  xor a
+loop:
+  add hl,hl
+  rla
+  jr c,too_big
+  cp c
+  jr c,no_sub
+too_big:
+  sub c
+  inc l
+no_sub:
+  djnz loop
+end macro
+
+; 40*8 multiplication (35 bytes, 688-1080cc)
+; input:
+;  BBC'HL, C
+; output:
+;  CAHL'IX
+; destroys:
+;  swaps shadows
+;  D=0,F
+macro bBChl_mul_c
+  local loop,no_carry,no_add
+
+  xor a
+  ld ix,0
+  exx
+  ld l,a
+  ld h,a
+
+  ld d,8
+loop:
+  ex af,af'
+
+  add ix,ix
+  adc hl,hl
+  rla
+  exx
+  rl c
+  jr nc,no_add
+  add ix,hl
+  exx
+  adc hl,bc
+  exx
+  add a,b
+  jr nc,no_carry
+  inc c
+no_carry:
+no_add:
+  exx
+  dec d
+  jr nz,loop
+end macro
+
+; 40/24 division (44 bytes, 2922-3630cc)
+; input:
+;  CHLIX, IYL-DE'
+; output:
+;  CHLIX, AHL'
+; destroys:
+;  B=0,F
+macro chlix_div_iylDE
+  local loop,yes_sub,too_big
+
+  ld b,24
+  exx
+  xor a
+  ld l,a
+  ld h,a
+  exx
+
+loop:
+  add ix,ix
+  inc ixl
+  adc hl,hl
+  rl c
+  exx
+  adc hl,hl
+  rla
+
+  jr c,too_big
+
+  sbc hl,de
+  sbc a,iyl
+  jr nc,yes_sub
+  add hl,de
+  adc a,iyl
+  dec ixl
+yes_sub:
+  exx
+  djnz loop
+  jr done
+
+too_big:
+  sbc hl,de
+  sbc a,iyl
+  exx
+  djnz loop
+
+done:
+end macro
+
+
+
+
+macro exp_float_int base*,exponent*,return*
+  local result,unit,exp
+  unit = base
+  result = 1
+  exp = exponent
+
+  if exp < 0
+    exp = -exp
+  end if
+
+  while exp > 0
+    if exp and 1 = 1
+      result = result * unit
+    end if
+    unit = unit * unit
+    exp = exp shr 1
+  end while
+
+  exp = exponent
+  if exp < 0
+    result = 1 / result
+  end if
+
+  return := result
 end macro

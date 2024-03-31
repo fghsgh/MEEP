@@ -1,3 +1,5 @@
+if 1 ; set to 1 to specify manual timings
+
   ld hl,tunings
   ld de,general_tuning
   ld bc,2*12+12
@@ -20,37 +22,46 @@ tunings:
   dw $739C,$7A7C,$81C4,$897C,$91A9,$9A52,$A37F,$AD38,$B785,$C26E,$CDFE,$DA3E
 ; FOR BASS CHANNEL
 ; set these to `round(1 / (2^((n - 69) / 12) * 440) * (freq / (5 * 176)) / 8)` with
-;   n = 12..18, then 7..11 (MIDI codes for C0..F#0, G-1..B-1)
+;   n = 12..19, then 8..11 (MIDI codes for C0..G0, G#-1..B-1)
 ;   69, 12, 440, (freq / (5 * 176)) = same as above
 ;   8 = because there are 8 segments that can be output
 ;   round() should round to the nearest whole number
 ; if any of these are too big for 8-bit, then your clock speed is too high, see below for a fix
-  db $8E,$86,$7E,$77,$70,$6A,$64,$BD,$B3,$A9,$9F,$96
+  db $8E,$86,$7E,$77,$70,$6A,$64,$5F,$B3,$A9,$9F,$96
 ; WHAT TO DO IF SOME NUMBERS ARE OUT OF RANGE:
 ; you can try messing with the interrupt frequency (that 176 number in the formula)
 ; if your clock speed is too high, you can decrease the interrupt frequency (increase the 176)
 ; if your clock speed is too low, you can try increasing the interrupt frequency *slightly* (decrease the 176) (make sure it stays above 159cc or so, as that's the longest the interrupt itself can take)
-; for this, find where I'm setting the interrupt frequency (probably init_driver.z80, search the file for 176, but check the file you're assembling, maybe it's doing it somewhere else)
+; for this, find where I'm setting the interrupt frequency (probably init_driver.z80 (depending on whether it is included, of course), and search the file for 176)
 ; ...and of course change the 176 in the formulas above
 
 
-if 0
+else
+; include after setting up page map and interrupt vector table, but before setting interrupt routine, crystal timers, and generating driver code
+; destroys driver_ram, interrupt_ram, first crystal timer
+; assumes all other interrupt sources are disabled
+; generates general_tuning and bass_tuning
 
 measure_cpu:
-  assert driver_ram shr 8 = $c3
+; first, copy 2044 NOPs to driver_ram (the next 4 bytes are 03C301C3, inc bc \ jp $c301)
+  assert driver_ram = $c301
   ld hl,$c303
-  ld [driver_ram + 2044]
+  ld [driver_ram + 2044],hl
   ld l,$01
-  ld [driver_ram + 2046]
+  ld [driver_ram + 2046],hl
   ld de,driver_ram + 1
   ld bc,2043
   ld [hl],0
   ldir
 
+; at the interrupt routine, put a jump into our code
   ld a,$c3
   ld [interrupt_ram],a
   ld hl,.starttmr
   ld [interrupt_ram + 1],hl
+
+; set crystal timer to 128 Hz, countdown 1
+; (to sync the start of the timer loop)
   ld a,$46
   out [$30],a
   ld a,$03
@@ -60,36 +71,76 @@ measure_cpu:
   ei
   jq driver_ram
 
-tunings:
-repeat 12, i:120
-  ; round(2^((n - 69) / 12) * 440 * 65536 / ((freq/2)*2 / (5 * (176))) * 256)
-  emit trunc(1.0594630943592952645618252949463417007792043174941856285592 shl (i - 43) * 275 + .5):5
-end repeat
-iterate <count,start>, 9,12, 3,7
-  repeat count, i:start
-    emit 
+; convenient location for this because it gets jumped over
+macro ?!
+.tunings_const:
+  local result
+  ; round(2^((n - 69) / 12) * 440 * 65536 / ((freq/2)*2 / (5 * (176)))) (n = 120..131)
+  ; 2^((n-69)/12)*440*65536/(x*2/(5*y))*256 / 256
+  ; = 2^((n-69)/12)*440*65536*256/(x/y*2/5) / 256
+  ; = (2^(1/12))^(n-69)*(440*65536*256*5/2) / (x/y) / 256
+  ; max value is 662878945917, which fits in 40 bits
+  ; the 256 factor is to make it fixed point, because otherwise 32+8-24=16, with no spare bits for precision
+  repeat 12, n:120
+    exp_float_int semitone,n-69,result
+    emit trunc(result * (440*65536*256*5/2) + .5):5
   end repeat
-end iterate
+.bass_tunings_const:
+  iterate <count,start>, 12-bass_lowest_octave_count,12, bass_lowest_octave_count,8
+    repeat count, n:start
+      ; round(((freq/2)*2 / (5 * 176)) / (2^((n - 69) / 12) * 440 * 8)) (n = 12..19, 8..11)
+      ; ((x * 2 / (5 * y)) / (2^((n - 69) / 12) * 440 * 8)) * 16777216 / 16777216
+      ; = (x/y) / (2^((n - 69) / 12) * 440 * 8 * 5/2) * 16777216 / 16777216
+      ; = 1 / (2^((n - 69) / 12) * 440 * 8 * 5/2) * 16777216 * (x/y) / 16777216
+      exp_float_int semitone,n-69,result
+      emit trunc(16777216 * 440 * 8 * 5/2 / result + .5):2
+    end repeat
+  end iterate
+
+  purge ?
+end macro
 
 .starttmr:
+; ack, countdown 128
   ld a,$03
   out [$31],a
   ld a,128
   out [32],a
   ld bc,0
+
+; ignore return address, set new interrupt routine
   pop hl
   ld hl,.stoptmr
   ld [interrupt_ram + 1],hl
   ei
   jq driver_ram
 
+
+; gets jumped over, can store this here
+; inputs:
+;  IYL-DE: measured clock speed
+;  HL: tuning constant
+;  IYH: timer speed
+; outputs:
+;  HL: value to use (truncate to 8-bit)
+; doesn't destroy IY, DE, shadows
+bass_calc_tuning:
+  iylde_mul_hl
+  ; we're using 24 extra bits for precision, after this step we can discard
+  ld c,iyh
+  hl_div_c
+  ret
+
+
 .stoptmr:
+; stop timer
   xor a
   out [$30],a
   out [$31],a
 
+; use the return address to figure out how much we executed
   pop hl
-  ld a,l
+  ld a,l                      ; if on last instruction (JP), then the final 6cc INC BC should count, which means 4cc * 2044 NOPs + 6cc = 4091 * 2 cc
   cp (driver_ram + 2045) and $00ff
   jq nz,.not_last_instr
   ld a,h
@@ -103,6 +154,9 @@ end iterate
   add hl,hl
 .done_instr:
 
+; BC & 000f << 12 | HL -> HL
+; BC >> 4 -> BA
+; assert B = 0
   ld a,c
   rrca
   rrca
@@ -125,34 +179,116 @@ end iterate
 
   ex de,hl
   ld iyl,a
-  ; now IYLDE is the clock speed
+; now IYLDE is half the clock speed
+
+; find timer speed that doesn't cause bass channel to overflow
+  ld iyh,min_timer_speed
+.find_timer_speed:
+  ld hl,bass_tunings_const + 2 * (12 - bass_lowest_octave_count)
+  ld a,[hl]
+  inc hl
+  ld h,[hl]
+  ld l,a
+
+  call bass_calc_tuning
+  ld a,h
+  or a
+  jr z,.found
+  inc iyh
+  jr .find_timer_speed
 
 
-  ld [interrupt_ram],sp
-  ld sp,tunings
-
+general_tuning_calc:
   exx
-  ld hl,general_tuning + 11
+  ld [save_sp],sp
+  ld sp,tunings_const-1
+  ld e,general_tuning and $00ff1
+  assert general_tuning shr 8 = (general_tuning + 2*) shr 8
+
+.loop:
+; read constant
+  exx
+  pop bc
+  exx
+  pop bc
+  exx
+  pop hl
+  dec sp
+
+  ld c,iyh
+  bBChl_mul_c
+  ld ixl,ixh
+  ld a,l
+  ld ixh,a
+  ld l,h
+  ex af,af'
+  ld h,a
+  chlix_div_iylDE
+  ld c,ixl
+  ld b,ixh
+  exx
+
+  add hl,hl
+  rla
+  jr c,.round_up
+  sbc hl,de
+  sbc a,iyl
+  exx
+  jr c,.round_down
+  db _cp
+.round_up:
+  exx
+  inc c
+  jr nz,.no_carry
+  inc b
+  jr z,.speed_out_of_range
+.round_down:
+
+  ld a,c
+  or l
+  or h
+  jr nz,.speed_out_of_range
+
+  ld d,general_tuning shr 8
+  ex de,hl
+  ld [hl],c
+  inc l
+  ld [hl],b
+  inc l
+  ex de,hl
+
+  ld a,e
+  cp (general_tuning + 2*12) and $00ff
+  jr c,.loop
+
+
+bass_tuning_calc:
+  ld hl,0
+  add hl,sp
+  ld sp,[save_sp]
   ld b,12
 
-.general_loop:
+.loop:
+  ld a,[hl]
+  inc hl
   exx
-
-  pop bc
-  dec sp
-  pop hl
-
-  iylde_mul_hlc
-
+  ld l,a
   exx
-  ld [hl],a
-  dec hl
-  ld a,ixh
-  ld [hl],a
-  dec hl
-  djnz .general_loop
+  ld a,[hl]
+  inc hl
+  exx
+  ld h,a
 
-  ld sp,[interrupt_ram]
+  call bass_calc_tuning
+  ld a,h
+  or a
+  jr nz,.speed_out_of_range
+  ld a,l
+  exx
+  ex de,hl
+  ld [hl],a
+  inc l
+  djnz .loop
 
 
 end if

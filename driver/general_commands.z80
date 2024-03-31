@@ -11,23 +11,26 @@
   ld a,[hl]                   ;           pw_start = *channel_pointer++;
   inc hl
   ld [pw_start.addr],a
-  ld a,[hl]                   ;           pw_other_bound = *channel_pointer++;
+  or a                        ;           if (pw_start) {
+  jq z,.skip_bounds
+  ld a,[hl]                   ;             pw_other_bound = *channel_pointer++;
   inc hl
   ld [pw_other_bound.addr],a
   ld [pw_lower.addr],a
-  ld a,[hl]                   ;           pw_now_bound = *channel_pointer++;
+  ld a,[hl]                   ;             pw_now_bound = *channel_pointer++;
   inc hl
   ld [pw_now_bound.addr],a
   ld [pw_upper.addr],a
+  ld a,_jrc                   ;             pw_decr = false;
+  ld [.pw_nc_smc],a
+  xor _jrc xor _jrnc
+  ld [.pw_c_smc],a
+.skip_bounds:                 ;           }
   ld e,[hl]                   ;           pw_change = *channel_pointer++;
   inc hl
   ld d,[hl]                   ;           pw_change |= *channel_pointer++ << 8;
   inc hl
   ld [pw_change.addr],de
-  ld a,_jrc                   ;           pw_decr = false;
-  ld [.pw_nc_smc],a
-  xor _jrc xor _jrnc
-  ld [.pw_c_smc],a
   ret                         ;           break;
 
 .cmd_mask:                    ;         case 0x10:

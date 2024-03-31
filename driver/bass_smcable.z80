@@ -15,3 +15,12 @@ smcable bass_arp_count_reset, bass_arp_count_reset.addr,    1
 smcable bass_note_len_arg,    bass_note_len_arg.addr,       0
 smcable bass_note_len_type,   bass_note_len_type.addr,      1
 
+smcable bass_pw_start,        bass_pw_start.addr,           $f0   ; byte
+smcable bass_pw_delay_reset,  bass_pw_delay_reset.addr,     0
+smcable bass_pw_state,        bass_pw_state.addr,           $f0
+smcable bass_pw_delay,        bass_pw_delay.addr,           0
+smcable bass_pw_lower,        bass_pw_lower.addr
+smcable bass_pw_upper,        bass_pw_upper.addr
+smcable bass_pw_now,          bass_pw_now.addr
+smcable bass_pw_other,        bass_pw_other.addr
+smcable bass_outstate,        bass_outstate.addr,           $f0

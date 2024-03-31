@@ -65,7 +65,51 @@ bass:
 .mute_bass:
 .finish_bass:
 
+; doesn't destroy HL (channel pointer)
 macro bass_reset_pwm
+  local findrot_loop,found,not_set_pw,not_pw_decr
+
+  ld b,8
+  ld a,bass_pw_start
+  or a
+  jr z,no_set_pw
+  ld c,a
+  ex de,hl
+  ld a,[bass_pw_state.addr]
+  ld hl,bass_outstate.addr
+  ld l,[hl]
+
+findrot_loop:
+  cp l
+  jr z,found
+  rlca
+  rl c
+  djnz findrot_loop           ; failsafe in case framestate doesn't match anything: just set it to the non-rotated state
+  ld l,bass_outstate.addr and $00ff ; bass_outstate.addr is not relocatable because it happens in the drum driver, which has a fixed address
+  ld [hl],c
+
+found:
+  ld a,c
+  ld [bass_pw_state.addr],a
+
+  ld a,bass_pw_delay_reset
+  ld [bass_pw_delay.addr],a
+
+  ld a,[bass.pw_andc_smc]
+  cp _orc
+  jq z,not_pw_decr
+
+  ld a,bass_pw_lower + $f0
+  ld [pw_now_bound.addr],a
+  ld a,bass_pw_upper + $f0
+  ld [pw_other_bound.addr],a
+
+  ld a,_orc
+  ld [bass.pw_and_smc],a
+
+not_pw_decr:
+  ex de,hl
+no_set_pw:
 end macro
 
 
@@ -87,6 +131,52 @@ macro bass_reset_arp
 end macro
 
 macro bass_pwm
+  local findrot_loop,found,no_wraparound.done,delayed
+
+  ld a,bass_pw_delay
+  dec a
+  jq nz,delayed
+
+  ld a,[bass_outstate.addr]
+  ld l,a
+  ld bc,$0800 + bass_pw_now_bound
+  ld a,bass_pw_state
+
+findrot_loop:
+  cp l
+  jq z,found
+  rlca
+  rl c
+  djnz findrot_loop
+
+  jq done
+
+found:
+  cp c
+  ld c,a
+  jq nz,wraparound
+
+  ld b,bass_pw_other_bound
+  ld a,[bass_pw_now_bound.addr]
+  ld [bass_pw_other_bound.addr],a
+  ld a,b
+  ld [bass_pw_now_bound.addr],a
+
+  ld a,[bass_pw_andc_smc]
+  xor _andc xor _orc
+  ld [bass_pw_andc_smc],a
+  ld a,c
+no_wraparound:
+
+  rlca
+bass_pw_andc_smc:
+  or c
+done:
+  ld [bass_outstate.addr],a ; not found: just reset it to known state and exit
+
+  ld a,bass_pw_delay_reset
+delayed:
+  ld [bass_pw_delay.addr],a
 end macro
 
 macro bass_arp

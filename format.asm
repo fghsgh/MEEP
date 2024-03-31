@@ -20,8 +20,9 @@ format ti appvar
 ;  $00: set starting pulse width settings
 ;    1 byte = the pulse width to set at the start of a note ($00 = 0%, $ff = 99.6%, default $00)
 ;               $00 means "do not change previous value"
-;    1 byte = minimum pulse width
-;    1 byte = maximum pulse width
+;               this will also cause the min & max to not exist (the values actually aren't stored, not just not read, it immediately goes to the offset 2 bytes later)
+;    1 byte = minimum pulse width (only if start != 0)
+;    1 byte = maximum pulse width (only if start != 0)
 ;    1 word = offset added to pulse width each time (only MSB is used, LSB is for precision), default $0000
 ;               an attempt is made at handling overflows
 ;  $10: set mask
@@ -132,18 +133,21 @@ bass:
 ;   also note that the bass channel is tuned completely differently from the general-purpose wave channels; higher notes are more out of tune, and lower notes about the same amount, but not exactly the same, which can lead to phasing effects; however, there are no aliasing artifacts (unlike on the general-purpose channels for high notes)
 ;
 ; the pwm command works differently
-;   the format is $00,<start>,<firstshift>,<nextshifts>,<delay>
+;   the format is $00,<start>[,<lower>,<upper>],<delay>
 ;   the bass channel's bitbang ISR will decrement its wavelength counter, and if it hits zero, play the next bit of the <start> value (left rotating it)
 ;   therefore, <start> is an 8-bit value where each bit represents either low or high (low being 1, high being 0)
+;     like the general channels, setting this to 0 will make it not get reset at the start of a note
+;     this also skips over lower & upper (like, the values actually don't exist, not just that they aren't read)
 ;   the bass channel's driver can add one bit, or remove one bit, by doing the operations `a | rotl(a,1)` and `a & rotl(a,1)`
 ;   the delay in frames between these operations is given by <delay>
-;   <firstshift> is the number of bits to be added before it begins removing bits
-;   <nextshifts> is the number of bits to be added/removed before it switches to the other operation again
-;   setting <delay> to 0 will not change the pulse width at all
-;   <firstshift> being 0 is handled (will immediately start removing bits), <nextshifts> is not (unless <delay> is 0)
+;   when the state equals <lower> or <upper>, in any rotation, the next state change will reverse the order, <lower> is only checked when the operation is `a & rotl(a,1)`, <upper> when `a | rotl(a,1)`
+;   if <lower> and <upper> are equal, the next state change boundary check will not trigger. if you want to disable PWM, set <delay> to 0
+;   <delay> specifies how many frames should happen between individual state changes
+;   set <delay> to zero to completely avoid PWM (this sets the delay to 256, but notes can be at most 256 frames long)
 ; examples:
 ;   $00,$f0,0,0,0: 50%, no pwm (this is the default)
-;   $00,$f0,3,6,4: pwm between 12.5% and 87.5%, starting at 50%, with one oscillation per second (4 = 50 Hz / (6 * 2 steps))
+;   $00,$f0,$80,$fe,: pwm between 12.5% and 87.5%, starting at 50%, with 4 frames between switches, meaning it's oscillating at 1 Hz
 ;   $00,$aa,0,0,0: play 2 octaves higher, no pwm
-;   $00,$cc,0,2,6: play 1 octave higher, pwm between 25% and 75%, starting at 75%, with two oscillations per second (6 = 50 Hz / (2 * 2 steps) / 2)
-; the drum channel will copy this pulse width
+;   $00,$cc,$88,$ee,6: play 1 octave higher, pwm between 25% and 75%, starting at 75%, with two oscillations per second
+;   $00,$e8,0,0,0: weird wave shape 11101000
+; the drum channel has its own pulse width

@@ -148,6 +148,7 @@ noisewave:
   ret
 
 smcable basswave.state, basswave.state.addr, $f000
+basswave.framestate.addr := basswave.state.addr + 1
 smcable basswave.length.val, basswave.length
 smcable basswave.mask.val, basswave.mask
 smcable basswave.next.val, basswave.next

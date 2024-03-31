@@ -1,3 +1,16 @@
+; changing these /too much/ may cause overflow assembly errors due to overflow
+basefreq := 440 ; freq of A4, can be float
+min_timer_speed := 176 ; fastest the timer can repeat
+  ; lower yields better quality (less noise, higher parasite tone, more accurate tuning, less aliasing)
+  ; higher leaves more CPU time to other tasks
+  ; but will still pick a higher timer speed if required to avoid overflow
+  ; if you get "can't complete driver in time" errors, your clock speed is too low, try setting this higher
+  ; if you want higher quality, try setting it (slightly) lower (needs to be high enough for the interrupt to finish, of course, or else you get lock-ups)
+semitone := 1.0594630943592952645618252949463417007792043174941856285592 ; 2^(1/12), you can edit this if you want microtonal music, i guess (though you're gonna need a lot more edits throughout the source for that, though)
+bass_lowest := 8 ; midi code of the lowest note playable on bass channel (better tuning but possibly slower timer (= lower quality))
+bass_lowest_octave_count := 12 - bass_lowest mod 12
+
+; changing these may cause asserts to fail
 waves_ram := $c000 ; bitbang wave generators
 assert waves_ram + waves.size <= general_tuning
 general_tuning := $c099 ; tunings of general-purpose channels
@@ -9,6 +22,7 @@ assert appvar_start + 2 = channels_playing
 channels_playing := $c0bf ; the number of channels that are still playing (a $e0 command decrements this and exits if it hits 0)
 assert channels_playing + 1 = interrupt_ram
 interrupt_ram := $c0c0 ; start of the interrupt routine
+save_sp := interrupt_ram ; only used in cpuspeed.z80
 assert interrupt_ram + interrupt.size <= djnz_counters_ram
 djnz_counters_ram := $c100 ; 256 counters for $a0 and $b0 commands
 ;font := $c200 ; 3x3 font, decompressed
@@ -37,5 +51,9 @@ load _jr:1 from $
   jr $
 load _cp:1 from $
   cp 0
+load _orc:1 from $
+  or c
+load _andc:1 from $
+  and c
 end virtual
 

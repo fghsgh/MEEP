@@ -1,9 +1,32 @@
 
 .switch_cases:
-  dw cmd_nothing,.cmd_mask,.cmd_additive,.cmd_subtractive
+  dw .cmd_pwm,.cmd_mask,.cmd_additive,.cmd_subtractive
   dw .cmd_fractional,cmd_nothing,cmd_nothing,.cmd_arpeggio
   dw .cmd_rest,cmd_jump,cmd_djnz,cmd_table_value
   dw cmd_set_phase,cmd_nothing,.cmd_finish,cmd_exit
+
+.cmd_pwm:                     ;         case 0x00:
+  ex de,hl
+  ld a,[hl]
+  inc hl
+  ld [bass_pw_start.addr],a
+  or a
+  jq z,.skip_bounds
+  ld a,[hl]
+  inc hl
+  ld [bass_pw_other_bound.addr],a
+  ld [bass_pw_lower.addr],a
+  ld a,[hl]
+  inc hl
+  ld [bass_pw_now_bound.addr],a
+  ld [bass_pw_upper_bound.addr],a
+  ld a,_orc
+  ld [.pw_andc_smc],a
+.skip_bounds:
+  ld a,[hl]
+  inc hl
+  ld [bass_pw_delay_reset.addr],a
+  ret
 
 .cmd_mask:                    ;         case 0x10:
   ex de,hl

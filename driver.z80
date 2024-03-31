@@ -13,6 +13,7 @@ driver3_ram := driver2_ram + ch_driver.size + ch2sync.size
 drumlcd_ram := driver3_ram + ch_driver.size + ch3sync.size
 
 include "driver/init.z80"
+include "driver/parse_command.z80"
 
 relocate_a.table:
 relocatable relocate_a,relocate_a.len,relocate_a

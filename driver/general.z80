@@ -21,14 +21,14 @@ general_driver:
   ld c,a
   and $0f
   jq z,.parse_command
-  include "general_reset_pwm.z80"
+  general_reset_pwm
   ld a,[.do_arp_jr_smc]       ;       if (do_arp) {
   sub _cp
   jq nz,.not_arp_set
-  include "general_reset_arp.z80"
+  general_reset_arp
   jq .after_vib_set           ;       } else {
 .not_arp_set:
-  include "general_reset_vib.z80"
+  general_reset_vib
 .after_vib_set:               ;       }
 
   ld c,[hl]                   ;       {note_len,rest_len} = do_note_len(*channel_pointer++);
@@ -42,7 +42,8 @@ general_driver:
   jq .after_read_note
 
 .parse_command:
-  include "parse_command.z80"
+  parse_command
+.switch_cases:
   include "general_commands.z80"
 
 .play_note_normal:
@@ -50,19 +51,19 @@ general_driver:
 
 .after_read_note:             ; }
 ; advance channel state to next frame
-  include "general_pwm.z80"
+  general_pwm
 ; smc between JR and CP to choose arp or vib
 .do_arp_jr_smc:
   assert (.do_vib - ($ + 2)) <= 127
   cp .do_vib - ($ + 2)        ; if (do_arp) {
-  include "general_arp.z80"
+  general_arp
   jq .next                    ; } else {
 
 .do_vib:
   ld a,vib_delay + 1          ;   if (!--vib_delay) {
   dec a
   jq nz,.vib_delayed
-  include "general_vib.z80"
+  general_vib
 
   jq .next                    ; }
 
@@ -72,3 +73,243 @@ general_driver.vib_delayed:
   ld [vib_delay.addr],a       ;   }
 
 general_driver.next:
+
+
+
+
+; resets the PWM for the start of a new note
+; inputs:
+;  HL: channel pointer
+; outputs:
+;  HL: channel pointer
+; destroys: AF, DE
+macro general_reset_pwm
+  local no_set_pw,not_pw_decr
+
+  ld a,pw_start + $80         ;       if (pw_start)
+  or a
+  jq z,no_set_pw
+  ld [pulsewavex.width],a
+  ex de,hl
+  ld l,0                      ;         pw_state = pw_start << 8;
+  ld h,a
+  ld [pw_state.addr],hl
+
+  ld a,[general_driver.pw_nc_smc] ;     if (pw_decr) {
+  cp _jrnc
+  jq nz,not_pw_decr
+
+  ld a,pw_lower + $80
+  ld [pw_other_bound.addr],a
+  ld a,pw_upper + $80
+  ld [pw_now_bound.addr],a
+
+  ld a,_jrc                   ;         pw_decr = false;
+  ld [.pw_nc_smc],a
+  xor _jrc xor _jrnc
+  ld [.pw_c_smc],a
+
+  ld hl,[pw_change.addr]
+  xor a
+  sub l
+  ld l,a
+  sbc a,a
+  sub h
+  ld h,a
+  ld [pw_change.addr],hl
+
+not_pw_decr:                  ;       }
+  ex de,hl
+no_set_pw:
+end macro
+
+
+; sets the start of the arpeggio and its length, and advances the channel pointer to just after it
+; inputs:
+;  A: 0
+;  HL: channel pointer
+; outputs:
+;  HL: channel pointer
+; destroys: AF, DE
+macro general_reset_arp
+  ld d,a
+  ld [arp_start.addr],hl      ;         arp_start = arp_current = channel_pointer;
+  ld [arp_current.addr],hl
+  ld a,1                      ;         arp_delay = 1;
+  ld [arp_delay.addr],a ; make it read a new note immediately
+  ld a,[arp_count_reset.addr] ;         arp_count = arp_count_reset;
+  ld [arp_count.addr],a
+  ld e,a                      ;         channel_pointer += arp_count_reset;
+  add hl,de
+end macro
+
+
+; resets the vibrato state for the start of a new note
+; inputs:
+;  HL: channel pointer
+;  C: already read note code
+; outputs:
+;  HL: channel pointer
+; destroys:
+;  AF, BC, DE, HL
+macro general_reset_vib
+  inc hl                      ;         vib_state = decode_note(*channel_pointer++);
+  push hl
+  call decode_note
+  ld [pulsewavex.freq],hl
+  ld [vib_state.addr],hl
+  push hl
+  ld a,vib_diff               ;         uint16_t vib_offset = vib_state * vib_diff >> 11;
+  call calc_vib_diff
+  ex de,hl
+  pop hl                      ;         vib_other_bound = vib_state - vib_offset;
+  push hl
+  sbc hl,de
+  ld [vib_other_bound.addr],hl
+  add hl,de                   ;         vib_now_bound = vib_state + vib_offset;
+  add hl,de
+  ld [vib_now_bound.addr],hl
+  pop hl                      ;         vib_change = vib_state * vib_speed >> 11;
+  ld a,vib_speed
+  call calc_vib_diff
+  ld [vib_change.addr],hl
+  ld a,vib_delay_reset        ;         vib_delay = vib_delay_reset;
+  ld [vib_delay.addr],a
+  ld a,_adc                   ;         vib_decr = false;
+  ld [general_driver.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [general_driver.vib_c_smc],a
+  pop hl
+end macro
+
+
+; inputs: none
+; outputs: none
+; destroys: AF, BC, DE, HL
+macro general_pwm
+  local wraparound,no_wraparound
+
+  ld hl,pw_state              ; if (pw_decr)
+  ld bc,pw_change             ;   pw_state -= pw_change;
+                              ; else
+  add hl,bc                   ;   pw_state += pw_change;
+  ld a,pw_now_bound + $80
+general_driver.pw_nc_smc:
+  jr c,.pw_wraparound         ; if (carry || pw_decr ? pw_state < pw_now_bound : pw_state > pw_now_bound) {
+  cp h
+general_driver.pw_c_smc:
+  jr nc,.pw_no_wraparound
+wraparound:
+  ld d,a
+
+; the following lines are swapped around a bit for speed (and also for confusion)
+                              ;   pw_state = 2 * pw_now_bound - pw_state;
+                              ;   swap(pw_now_bound,pw_other_bound);
+; first part of the swap
+  ld a,pw_other_bound + $80
+  ld [pw_now_bound.addr],a
+; first part of the wraparound
+  xor a
+  sub l
+  ld e,a
+; second part of the swap
+  ld a,d
+  ld [pw_other_bound.addr],a
+; second part of the wraparound
+  ccf
+  adc a,a
+  sub h
+  ld d,a
+
+  xor a
+  sub c
+  ld l,a
+  sbc a,b
+  sub l
+  ld h,a
+  ld [pw_change.addr],hl
+  ex de,hl
+
+  ld a,[general_driver.pw_nc_smc] ;   pw_decr = !pw_decr;
+  ld [general_driver.pw_c_smc],a
+  xor _jrc xor _jrnc
+  ld [general_driver.pw_nc_smc],a
+no_wraparound:                ; }
+  ld [pw_state.addr],hl
+  ld a,h                      ; channel.pw = pw_state >> 8;
+  ld [pulsewavex.width],a
+end macro
+
+
+; advances the arpeggio
+; inputs: none
+; outputs: none
+; destroys: AF, C, HL
+macro general_arp
+  local no_arp_repeat,arp_delayed
+
+  ld a,arp_delay              ;   if (!--arp_delay) {
+  dec a
+  jq nz,.arp_delayed
+
+  ld hl,arp_current           ;     channel.freq = decode_note(arp_current++);
+  ld c,[hl]
+  inc hl
+
+  ld a,arp_count              ;     if (!--arp_count) {
+  dec a
+  jq nz,no_arp_repeat
+  ld hl,arp_start             ;       arp_current = arp_start;
+  ld a,arp_count_reset        ;       arp_count = arp_count_reset;
+no_arp_repeat:                ;     }
+  ld [arp_count.addr],a
+
+  ld [arp_current.addr],hl    ;     channel.freq = decode_note(arp_current++);
+  call decode_note
+  ld [pulsewavex.freq],hl
+
+  ld a,arp_delay_reset        ;     arp_delay = arp_delay_reset;
+arp_delayed:                  ;   }
+  ld [arp_delay.addr],a
+  jq ch_driver.next           ; } else {
+end macro
+
+
+; handles the vibrato state for one frame
+; inputs: none
+; outputs: none
+; destroys: AF, BC, DE, HL
+macro general_vib
+  local no_wraparound
+
+  or a
+  ld hl,vib_state             ;     channel.freq = vib_state;
+  ld [pulsewavex.freq],hl
+  ld de,vib_change            ;     if (vib_decr)
+general_driver.vib_sbc_smc := $ + 1 ; vib_state -= vib_change;
+  adc hl,de                   ;     else
+                              ;       vib_state += vib_change;
+; assume carry never happens here because sensible frequency ranges
+
+  ex de,hl                    ;     if (vib_decr ? vib_state < vib_now_bound : vib_state > vib_now_bound) {
+  ld hl,vib_now_bound
+  sbc hl,de
+general_driver.vib_c_smc:
+  jr nc,no_wraparound
+
+  ld de,[vib_now_bound.addr]  ;       vib_state = 2 * vib_now_bound - vib_state;
+  add hl,de
+  ex de,hl
+  ld bc,vib_other_bound       ;       swap(vib_now_bound,vib_other_bound);
+  ld [vib_other_bound.addr],hl
+  ld [vib_now_bound.addr],bc
+
+  ld a,[general_driver.vib_sbc_smc]
+  xor _adc xor _sbc
+  ld [general_driver.vib_sbc_smc],a
+  xor _adc xor _jrnc
+  ld [general_driver.vib_c_smc],a
+
+no_wraparound:
+  ld [vib_state.addr],de
+end macro

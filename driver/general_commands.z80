@@ -1,7 +1,6 @@
 ; see parse_command.z80 for more information
 
-.switch_cases:
-; the ones without period are global
+; the ones without period are global (not in this file)
   dw .cmd_pwm,.cmd_mask,.cmd_additive,.cmd_subtractive
   dw .cmd_fractional,.cmd_glide,.cmd_vibrato,.cmd_arpeggio
   dw .cmd_rest,cmd_jump,cmd_djnz,cmd_table_value
